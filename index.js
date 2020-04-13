@@ -4,9 +4,8 @@ const rp = require('repeatable-promise');
 const defaultTimeout = 1500
 const defaultclearOut = 0
 
-function telnet_engine(host, port) {
+function Engine(host, port) {
 
-    var engine = this
     var client;
 
     var inDelimiter = /\r\n|\r|\n/
@@ -61,13 +60,13 @@ function telnet_engine(host, port) {
                 })
             }
 
-    engine.onOpenConnectionConnecting = new rp.Cycle();
-    engine.onOpenConnectionSuccess = new rp.Cycle();
-    engine.onOpenConnectionTimeOut = new rp.Cycle();
-    engine.onConnectionError = new rp.Cycle();
-    engine.onConnectionEnd = new rp.Cycle();
-    engine.onResponseTimeOut = new rp.Cycle();
-    engine.onReceive = new rp.Cycle();
+    this.onOpenConnectionConnecting = new rp.Cycle();
+    this.onOpenConnectionSuccess = new rp.Cycle();
+    this.onOpenConnectionTimeOut = new rp.Cycle();
+    this.onConnectionError = new rp.Cycle();
+    this.onConnectionEnd = new rp.Cycle();
+    this.onResponseTimeOut = new rp.Cycle();
+    this.onReceive = new rp.Cycle();
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -77,11 +76,11 @@ function telnet_engine(host, port) {
                     return;
                 }
 
-                engine.onOpenConnectionConnecting.repeat()
+                this.onOpenConnectionConnecting.repeat()
 
                 var timeOutTimer = setTimeout(function () {
                     client.destroy()
-                    engine.onOpenConnectionTimeOut.repeat()
+                    this.onOpenConnectionTimeOut.repeat()
                     resolve();
                 }, timeOut)
 
@@ -90,7 +89,7 @@ function telnet_engine(host, port) {
                 },
                     function () {
                         clearTimeout(timeOutTimer)
-                        engine.onOpenConnectionSuccess.repeat()
+                        this.onOpenConnectionSuccess.repeat()
                         resolve()
                     }
 
@@ -104,15 +103,15 @@ function telnet_engine(host, port) {
                 });
 
 
-                client.on('error', () => { engine.onConnectionError.repeat() });
+                client.on('error', () => { this.onConnectionError.repeat() });
 
-                client.on('end', () => { engine.onConnectionEnd.repeat() });
+                client.on('end', () => { this.onConnectionEnd.repeat() });
 
             }
 
 
             catch (e) {
-                engine.onConnectionError.repeat()
+                this.onConnectionError.repeat()
                 resolve()
             }
 
@@ -132,7 +131,7 @@ function telnet_engine(host, port) {
 
     const treat = (txt) => {
 
-        engine.onReceive.repeat()
+        this.onReceive.repeat()
         buffer = buffer + txt;
         var p
         do {
@@ -165,7 +164,7 @@ function telnet_engine(host, port) {
                 clearWaiter
                     .then(() => {
                         responseTimer = setTimeout(() => {
-                            engine.onResponseTimeOut.repeat(responseUID);
+                            this.onResponseTimeOut.repeat(responseUID);
                             let failresp = responseUID ? { UID: responseUID, fail: true } : { fail: true }
                             broadcaster.repeat(failresp)
                             resetResponse()
@@ -203,26 +202,26 @@ function telnet_engine(host, port) {
     })
 
 
-    engine.terminate = () => {
+    this.terminate = () => {
         broadcaster.terminate()
         receiver.terminate()
-        engine.onOpenConnectionConnecting.terminate()
-        engine.onOpenConnectionSuccess.terminate()
-        engine.onOpenConnectionTimeOut.terminate()
-        engine.onConnectionError.terminate()
-        engine.onConnectionEnd.terminate()
-        engine.onReceive.terminate()
-        engine.onResponseTimeOut.terminate()
+        this.onOpenConnectionConnecting.terminate()
+        this.onOpenConnectionSuccess.terminate()
+        this.onOpenConnectionTimeOut.terminate()
+        this.onConnectionError.terminate()
+        this.onConnectionEnd.terminate()
+        this.onReceive.terminate()
+        this.onResponseTimeOut.terminate()
         if (listener) { listener.resolve(); }
         try { client.destroy() }
         catch (e) { }
     }
 
-    engine.listen = (f) => {
+    this.listen = (f) => {
         return broadcaster.thenAgain(f)
     }
 
-    engine.listenString = (f, UID = null) => {
+    this.listenString = (f, UID = null) => {
         if (UID == null) {
             return broadcaster.thenAgain((v) => {
                 f(v.text)
@@ -237,23 +236,23 @@ function telnet_engine(host, port) {
     }
 
 
-    engine.send = (p) => {
+    this.send = (p) => {
         return receiver.repeat(p)
 
     }
 
-    engine.sendString = (s, UID = null, t = oneLine()) => {
+    this.sendString = (s, UID = null, t = oneLine()) => {
         var p = { text: s, test: t }
         if (UID != null) { p.UID = UID }
         return receiver.repeat(p)
     }
 
-    engine.fail = (f, UID = null) => {
+    this.fail = (f, UID = null) => {
         if (UID = null) {
-            return engine.onResponseTimeOut.thenAgain(f)
+            return this.onResponseTimeOut.thenAgain(f)
         }
         else {
-            return engine.onResponseTimeOut.thenAgain(
+            return this.onResponseTimeOut.thenAgain(
                 (r) => {
                     if (r.UID == UID) {
                         f(r)
@@ -263,9 +262,9 @@ function telnet_engine(host, port) {
 
     }
 
-    engine.request = (s, f, t = oneLine()) => {
+    this.request = (s, f, t = oneLine()) => {
         UID = {}
-        var prom = engine.listen(
+        var prom = this.listen(
             (p) => {
                 if (p.UID == UID) {
                     if (p.fail) {
@@ -283,7 +282,7 @@ function telnet_engine(host, port) {
                 }
 
             })
-        engine.sendString(s, UID, t)
+        this.sendString(s, UID, t)
         return prom
     }
 
@@ -335,7 +334,7 @@ function oneLine() {
 
 
 module.exports = {
-    telnet_engine,
+    Engine,
     untilString,
     untilRexEx,
     untilNumLines,
