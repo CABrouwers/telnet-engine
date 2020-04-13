@@ -1,0 +1,28 @@
+{
+  "name": "telnet-engine",
+  "version": "0.0.1",
+  "description": "\"node.js interface to Telnet device,",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \\\\\\\"Error: no test specified\\\\\\\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CABrouwers/telnet-engine.git"
+  },
+  "keywords": [
+    "telnet",
+    "TCP",
+    "websocket"
+  ],
+  "author": "CABrouwers",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/CABrouwers/telnet-engine/issues"
+  },
+  "homepage": "https://github.com/CABrouwers/telnet-engine#readme",
+  "dependencies": {
+    "net": "^1.0.2",
+    "repeatable-promise": "^1.4.1"
+  }
+}
