@@ -7,7 +7,7 @@ This guide is organized in three sections:
 
 * **Basic utilization:**   Is a quick run meant to expose to the basics of the module
 * **Advanced utilization:**   Covers the key concept 
-* **Specifications:**  Provides the details of each object and method.
+* **Reference:**  Provides the details of each object and method.
 
 # Basic utilization
 The basic utilization of the package described here first is mostly for illustration purpose as it doesn't present much advantage over a simple websocket utility such as **net** on which in this packaged is built. 
