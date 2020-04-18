@@ -351,7 +351,9 @@ function noResponse() {
     return noRespObj
 }
 
-
+function version() {
+    return "0.0.4"
+}
 
 
 module.exports = {
@@ -361,4 +363,6 @@ module.exports = {
     untilNumLines,
     untilMilli,
     oneLine,
+    noResponse,
+    version
 }
