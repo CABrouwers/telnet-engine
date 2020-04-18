@@ -60,13 +60,25 @@ function Engine(host, port) {
                 })
             }
 
-    this.onOpenConnectionConnecting = new rp.Cycle();
-    this.onOpenConnectionSuccess = new rp.Cycle();
-    this.onOpenConnectionTimeOut = new rp.Cycle();
-    this.onConnectionError = new rp.Cycle();
-    this.onConnectionEnd = new rp.Cycle();
-    this.onResponseTimeOut = new rp.Cycle();
-    this.onReceive = new rp.Cycle();
+   onOpenConnectionConnecting = new rp.Cycle();
+   onOpenConnectionSuccess = new rp.Cycle();
+   onOpenConnectionTimeOut = new rp.Cycle();
+   onConnectionError = new rp.Cycle();
+   onConnectionEnd = new rp.Cycle();
+   onResponseTimeOut = new rp.Cycle();
+   onReceive = new rp.Cycle();
+
+
+    this.onOpenConnectionConnecting = (f) => { return onOpenConnectionConnecting.thenAgain(f)}
+    this.onOpenConnectionSuccess = (f) => { return onOpenConnectionSuccess.thenAgain(f) } 
+    this.onOpenConnectionTimeOut = (f) => { return onOpenConnectionTimeOut.thenAgain(f) } 
+    this.onConnectionError = (f) => { return onConnectionError.thenAgain(f) } 
+    this.onConnectionEnd = (f) => { return onConnectionEnd.thenAgain(f) } 
+    this.onResponseTimeOut = (f) => { return onResponseTimeOut.thenAgain(f) } 
+    this.onReceive = (f) => { return onReceive.thenAgain(f) }
+
+
+  
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -76,11 +88,11 @@ function Engine(host, port) {
                     return;
                 }
 
-                this.onOpenConnectionConnecting.repeat()
+               onOpenConnectionConnecting.repeat()
 
                 var timeOutTimer = setTimeout(function () {
                     client.destroy()
-                    this.onOpenConnectionTimeOut.repeat()
+                   onOpenConnectionTimeOut.repeat()
                     resolve();
                 }, timeOut)
 
@@ -89,7 +101,7 @@ function Engine(host, port) {
                 },
                     function () {
                         clearTimeout(timeOutTimer)
-                        this.onOpenConnectionSuccess.repeat()
+                       onOpenConnectionSuccess.repeat()
                         resolve()
                     }
 
@@ -103,15 +115,15 @@ function Engine(host, port) {
                 });
 
 
-                client.on('error', () => { this.onConnectionError.repeat() });
+                client.on('error', () => {onConnectionError.repeat() });
 
-                client.on('end', () => { this.onConnectionEnd.repeat() });
+                client.on('end', () => {onConnectionEnd.repeat() });
 
             }
 
 
             catch (e) {
-                this.onConnectionError.repeat()
+               onConnectionError.repeat()
                 resolve()
             }
 
@@ -131,7 +143,7 @@ function Engine(host, port) {
 
     const treat = (txt) => {
 
-        this.onReceive.repeat()
+       onReceive.repeat()
         buffer = buffer + txt;
         var p
         do {
@@ -164,7 +176,7 @@ function Engine(host, port) {
                 clearWaiter
                     .then(() => {
                         responseTimer = setTimeout(() => {
-                            this.onResponseTimeOut.repeat(responseUID);
+                           onResponseTimeOut.repeat(responseUID);
                             let failresp = responseUID ? { UID: responseUID, fail: true } : { fail: true }
                             broadcaster.repeat(failresp)
                             resetResponse()
@@ -205,13 +217,13 @@ function Engine(host, port) {
     this.terminate = () => {
         broadcaster.terminate()
         receiver.terminate()
-        this.onOpenConnectionConnecting.terminate()
-        this.onOpenConnectionSuccess.terminate()
-        this.onOpenConnectionTimeOut.terminate()
-        this.onConnectionError.terminate()
-        this.onConnectionEnd.terminate()
-        this.onReceive.terminate()
-        this.onResponseTimeOut.terminate()
+       onOpenConnectionConnecting.terminate()
+       onOpenConnectionSuccess.terminate()
+       onOpenConnectionTimeOut.terminate()
+       onConnectionError.terminate()
+       onConnectionEnd.terminate()
+       onReceive.terminate()
+       onResponseTimeOut.terminate()
         if (listener) { listener.resolve(); }
         try { client.destroy() }
         catch (e) { }
@@ -249,10 +261,10 @@ function Engine(host, port) {
 
     this.fail = (f, UID = null) => {
         if (UID = null) {
-            return this.onResponseTimeOut.thenAgain(f)
+            returnonResponseTimeOut.thenAgain(f)
         }
         else {
-            return this.onResponseTimeOut.thenAgain(
+            returnonResponseTimeOut.thenAgain(
                 (r) => {
                     if (r.UID == UID) {
                         f(r)
