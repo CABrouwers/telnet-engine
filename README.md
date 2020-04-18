@@ -3,6 +3,12 @@
 
 This module provides a simple object to a dialog with a telnet server over IP.  It is designed to send line commands or queries asynchronously to a server and treat the response asynchronously. The Engine establishes one socket channel with the server, which can be used asynchronously from different parts of the code. The Engine ensures that the link is up, queues and, if necessary, spaces the requests to ensure that the correct response is matched to the corresponding query. 
 
+This guide is organized in three sections:
+
+* **Basic utilization:**   Is a quick run meant to expose to the basics of the module
+* **Advanced utilization:**   Covers the key concept 
+* **Specifications:**  Provides the details of each object and method.
+
 # Basic utilization
 The basic utilization of the package described here first is mostly for illustration purpose as it doesn't present much advantage over a simple websocket utility such as **net** on which in this packaged is built. 
 
