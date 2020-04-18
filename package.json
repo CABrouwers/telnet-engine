@@ -1,6 +1,6 @@
 {
   "name": "telnet-engine",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "description": "\"node.js interface to Telnet device,",
   "main": "index.js",
   "scripts": {

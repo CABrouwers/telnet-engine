@@ -239,12 +239,12 @@ function Engine(host, port) {
     this.listenString = (f, UID = null) => {
         if (UID == null) {
             return broadcaster.thenAgain((v) => {
-                f(v.text)
+                if (! v.fail) { f(v.text) }
             })
         }
         else broadcaster.thenAgain((v) => {
             if (v.UID == UID) {
-                f(v.text)
+                if (!v.fail) { f(v.text) }
             }
         })
 
