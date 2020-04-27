@@ -1,7 +1,10 @@
 
 # telnet-engine
 
-This module provides a simple object to a dialog with a telnet server over IP.  It is designed to send line commands or queries asynchronously to a server and treat the response asynchronously. The Engine establishes one socket channel with the server, which can be used asynchronously from different parts of the code. The Engine ensures that the link is up, queues and, if necessary, spaces the requests to ensure that the correct response is matched to the corresponding query. 
+THIS MODULE IS IN DEVELOPMENT AND NOT STABLE
+COMPLETELY NEW VERSION UNDER TEST - DONT USE YET
+
+This module provides a simple object to manage dialog with a telnet server over IP.  It is designed to send line commands or queries asynchronously to a server and treat the response asynchronously. The Engine establishes one socket channel with the server, which can be used asynchronously from different parts of the code. The Engine ensures that the link is up, queues and, if necessary, spaces the requests to ensure that the correct response is matched to the corresponding query. 
 
 This guide is organized in three sections:
 

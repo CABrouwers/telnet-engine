@@ -1,26 +1,51 @@
 const net = require('net');
 const rp = require('repeatable-promise');
 
-const defaultTimeout = 1500
-const defaultclearOut = 0
+
+function Queue(val) {
+    var theQueue = Promise.resolve(val)
+
+    this.enQueue = (f, txt) => {
+
+        if (f instanceof Promise) {
+            theQueue = theQueue.then(() => { return f }).catch(() => { })
+        }
+        else {
+            theQueue = theQueue.then(f).catch(() => { })
+        }
+
+        return theQueue
+    }
+}
+
+
+
 
 function Engine(host, port) {
 
     var client;
 
     var inDelimiter = /\r\n|\r|\n/
+    var inDelimiterChecker = makeEnding(inDelimiter)
     var outDelimiter = '\n'
-    var timeOut = defaultTimeout
-    var clearOut = defaultclearOut
+    var timeOut = 1500
+    var clearOut = 0
+    var defaultPrompt = /^/
+    var modeStrict = true
+    var autoLineBreak = false
+
+    function makeEnding(reg) {
+        return new RegExp("(" + reg.source + ")$");
+    }
 
 
     Object.defineProperty(this, 'inDelimiter', {
         set: function (x) {
             inDelimiter = new RegExp(x)
+            inDelimiterChecker = makeEnding(inDelimiter)
         },
         get: function () { return inDelimiter; }
     });
-
 
     Object.defineProperty(this, 'outDelimiter', {
         set: function (x) {
@@ -28,8 +53,6 @@ function Engine(host, port) {
         },
         get: function () { return outDelimiter; }
     });
-
-
 
     Object.defineProperty(this, 'timeOut', {
         set: function (x) {
@@ -39,6 +62,15 @@ function Engine(host, port) {
     });
 
 
+
+
+    Object.defineProperty(this, 'defaultPrompt', {
+        set: function (x = /^/) {
+            defaultPrompt = x
+        },
+        get: function () { return defaultPrompt; }
+    });
+
     Object.defineProperty(this, 'clearOut', {
         set: function (x) {
             clearOut = isNaN(x) ? defaultClearOut : Math.abs(parseInt(x))
@@ -46,19 +78,24 @@ function Engine(host, port) {
         get: function () { return clearOut; }
     });
 
-    var responseUID = null
-    var responseTest = null
-    var responseRelease = null
-    var responseTimer = null
-    var clearWaiter = Promise.resolve()
-    const waitClear =
-        (clearOut <= 0)
-            ? () => { return Promise.resolve() }
-            : () => {
-                return new Promise((resolve) => {
-                    setTimeout(resolve, clearOut)
-                })
-            }
+    Object.defineProperty(this, 'modeStrict', {
+        set: function (x) {
+            modeStrict = true && x
+            if (!modeStrict) { treat() }
+        },
+        get: function () { return modeStrict; }
+    });
+
+    Object.defineProperty(this, 'autoLineBreak', {
+        set: function (x) {
+            if (x) { autoLineBreak = Number(x) }
+            else { x = false }
+        },
+        get: function () { return autoLineBreak; }
+    });
+
+
+
 
     onOpenConnectionConnecting = new rp.Cycle();
     onOpenConnectionSuccess = new rp.Cycle();
@@ -78,7 +115,9 @@ function Engine(host, port) {
     this.onReceive = (f) => { return onReceive.thenAgain(f) }
 
 
-
+    var lineBreakTimer = rp.Delay(0)
+    lineBreakTimer.clear = true
+    const lineBreak = {}
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -108,19 +147,27 @@ function Engine(host, port) {
                 )
 
                 client.on('data', function (chunk) {
-                    clearWaiter = waitClear();
                     let data = chunk.toString()
-                    treatment = treatment
-                        .then(() => { treat(data) })
-                });
+                    if (autoLineBreak) {
+                        if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
+                        else {
+                            lineBreakTimer.reset(autoLineBreak)
+                            lineBreakTimer = rp.Delay(autoLineBreak)
+                            lineBreakTimer
+                                .then(() => { treat(outDelimiter) })
+                                .catch(() => { })
+                                .finally(() => { lineBreakTimer.clear = true })
+                        }
+                    }
 
+                    treat(data)
+                })
 
                 client.on('error', () => { onConnectionError.repeat() });
 
                 client.on('end', () => { onConnectionEnd.repeat() });
 
             }
-
 
             catch (e) {
                 onConnectionError.repeat()
@@ -130,96 +177,169 @@ function Engine(host, port) {
         })
     }
 
+    var clearWaiter = rp.Delay(0)
+    clearWaiter.clear = true
 
-    const resetResponse = () => {
-        responseUID = reponseTest = null
-        if (responseRelease) { responseRelease() }
-        clearTimeout(responseTimer)
+    function resetClearWaiter() {
+        clearWaiter.reset(clearOut)
+        if (clearWaiter.clear) {
+            clearWaiter = rp.Delay(clearOut)
+            clearWaiter.then(() => { clearWaiter.clear = true })
+        }
     }
 
+    function sendLine(text) {
+        return clearWaiter.then(() => { client.write(text + outDelimiter) })
+    }
 
+    var responseExpected = false
+    var responseUID = undefined
+    var responseTest = undefined
+    var responseRelease = undefined
+    var responsePrompt = undefined
+    var responseFoo = undefined
+    var responseTimeout = undefined
+    var responseRequest = undefined
+    var responseCounter = undefined
+    //  var clearWaiter = Promise.resolve()
+
+    var sendQueue = new Queue()
+    sendQueue.enQueue(openConnection())
+
+
+    const send_receive = (text, foo, test, UID, prompt) => {
+        var prom = new rp.Defer()
+
+        sendQueue.enQueue(() => {
+
+            openConnection()
+                .then(() => { if (text || text == "") { return sendLine(text) } })
+                .then(() => {
+                    if (test == noRespObj) {
+                        prom.resolve();
+                        var interResponse = { end: true };
+                        if (responseUID) { interResponse.UID = responseUID }
+                        if (responseRequest || responseRequest == "") { interResponse.request = responseRequest }
+                        broadcast(interResponse)
+                        return
+                    }
+                    responseRequest = text
+                    tmpOjt = {}
+                    responseTest = (s, f, fd) => { test(s, f, tmpOjt, fd) }
+                    responseUID = UID
+                    responsePrompt = prompt
+                    responseFoo = foo ? foo : () => { }
+                    responseRelease = prom
+                    responseTimeout = new rp.Delay(timeOut)
+                    responseRelease
+                        .then(responseTimeout.fail)
+                        .catch(() => {
+                            var response = { fail: true }
+                            if (responseRequest) { response.request = responseRequest }
+                            if (UID) { response.UID = UID }
+                            broadcast(response)
+                        })
+                        .finally(() => {
+                            responseExpected = false
+                            responseUID = undefined
+                            responseTest = undefined
+                            responseRelease = undefined
+                            responsePrompt = undefined
+                            responseFoo = undefined
+                            responseTimeout = undefined
+                            responseCounter = undefined
+                            responseRequest = undefined
+                        })
+                    responseTimeout.then(() => { responseRelease.fail() }).catch(() => { })
+                    responseExpected = true
+                    treat()
+                }, prom.fail)
+        })
+        sendQueue.enQueue(prom).catch(() => {
+            var response = { fail: true }
+            if (UID) { response.UID = UID }
+            broadcast(response)
+        })
+        return prom
+    }
+
+    var inTreatment = false;
     var buffer = ""
-    var treatment = Promise.resolve()
 
     const treat = (txt) => {
-
+        if (txt) { buffer = buffer + txt, resetClearWaiter() }
+        if (inTreatment) { return }
+        if (!responseExpected && modeStrict) { return }
+        inTreatment = true;
+        var requestWIP = true
         onReceive.repeat()
-        buffer = buffer + txt;
-        var p
+        fEnd = (resp, ) => { requestWIP = false, responseRelease.resolve() }
         do {
-            p = buffer.search(inDelimiter);
-            if (p > -1) {
-                let sub = buffer.slice(0, p)
-                let resp = { text: sub }
-                if (responseUID) {
-                    resp.UID = responseUID
-                    responseTest(sub, () => { resp.end = true; resetResponse() })
+            if (responseTimeout) { responseTimeout.reset(timeOut) }
+            var pe = inDelimiter.exec(buffer)
+            var pr = responsePrompt ? responsePrompt.exec(buffer) : null
+
+            if (pe || pr) {
+                var indexStart, indexEnd, promptEnd
+                if (pr && (!pe || pr.index <= pe.index)) {
+                    indexStart = pr.index + pr[0].length
+                    indexEnd = indexStart
+                    promptEnd = true
                 }
-                broadcaster.repeat(resp)
-                buffer = buffer.slice(p).replace(inDelimiter, "")
-            }
-        } while (p > -1)
-    }
-
-
-    var broadcaster = new rp.Cycle();
-    var receiver = new rp.Cycle();
-
-    const processRequest = (cmd) => {
-        //if (cmd.UID) {
-        return new Promise((resolve, fail) => {
-            responseRelease = resolve
-            responseUID = cmd.UID
-            responseTest = cmd.test ? cmd.test : () => { return true }
-            clearWaiter
-                .then(() => {
-                    if (responseTest != noRespObj) {
-                        responseTimer = setTimeout(() => {
-                            onResponseTimeOut.repeat(responseUID);
-                            let failresp = responseUID ? { UID: responseUID, fail: true } : { fail: true }
-                            broadcaster.repeat(failresp)
-                            resetResponse()
-                        }, timeOut)
-                        client.write(cmd.text + outDelimiter)
-                    }
+                else {
+                    indexStart = pe.index
+                    indexEnd = pe.index + pe[0].length
+                    promptEnd = false
+                }
+                let sub = buffer.slice(0, indexStart)
+                response = { response: sub }
+                if (responseExpected) {
+                    responseCounter = responseCounter ? responseCounter + 1 : 1
+                    response.count = responseCounter
+                    if (responseUID) { response.UID = responseUID }
+                    if (responseRequest || responseRequest == "") { response.request = responseRequest }
+                    if (responseFoo) { responseFoo(sub) }
+                    if (promptEnd) { requestWIP = false, responseRelease.resolve(), response.end = true, response.prompt = true }
                     else {
-                        client.write(cmd.text + outDelimiter)
-                        resolve()
+                        responseTest(sub, () => { requestWIP = false; responseRelease.resolve(); response.end = true },
+                            () => {
+                                requestWIP = false
+                                responseRelease.resolve();
+                                var interResponse = { end: true };
+                                if (responseUID) { interResponse.UID = responseUID }
+                                if (responseRequest || responseRequest == "") { interResponse.request = responseRequest }
+                                broadcast(interResponse)
+                            })
                     }
-                })
-        })
-        //}
 
-        //else {
-        //    return new Promise((resolve, fail) => {
-        //        responseUID = null;
-        //        clearWaiter
-        //            .then(() => {
-        //                client.write(cmd.text + outDelimiter)
-        //                resolve()
-        //            })
-
-        //    })
-        //}
+                    broadcast(response)
+                    buffer = buffer.slice(indexEnd)
+                }
+            }
+        } while (requestWIP && (pe || pr))
+        inTreatment = false
     }
 
-    var listener = receiver.thenAgain((cmd) => {
-        sendQueue = sendQueue
-            .then(openConnection)
-            .then(() => { return processRequest(cmd) })
-    })
+    const broadcaster = new rp.Cycle()
 
-    var sendQueue = new Promise((resolve) => {
-        setTimeout(() => {
-            openConnection().then(resolve)
-        }
-            , 1000)
-    })
+    function broadcast(line) {
+        broadcaster.repeat(line)
+    }
+
+
+    ////////////--------------------------------------------------------------------------------------------------------
+    this.wait = (t) => {
+        sendQueue.enQueue(new rp.Delay(t))
+    }
 
 
     this.terminate = () => {
+        sendQueue.enQueue(this.destroy)
+    }
+
+
+    this.destroy = () => {
         broadcaster.terminate()
-        receiver.terminate()
         onOpenConnectionConnecting.terminate()
         onOpenConnectionSuccess.terminate()
         onOpenConnectionTimeOut.terminate()
@@ -227,116 +347,64 @@ function Engine(host, port) {
         onConnectionEnd.terminate()
         onReceive.terminate()
         onResponseTimeOut.terminate()
-        if (listener) { listener.resolve(); }
-        try { client.destroy() }
-        catch (e) { }
+        client.destroy()
     }
 
-    this.listen = (f) => {
-        return broadcaster.thenAgain(f)
-    }
-
-    this.listenString = (f, UID = null) => {
-        if (UID == null) {
-            return broadcaster.thenAgain((v) => {
-                if (! v.fail) { f(v.text) }
-            })
-        }
-        else broadcaster.thenAgain((v) => {
-            if (v.UID == UID) {
-                if (!v.fail) { f(v.text) }
-            }
-        })
-
-    }
-
-
-    this.send = (p) => {
-        return receiver.repeat(p)
-
-    }
-
-    this.sendString = (s, UID = null, t = oneLine()) => {
-        var p = { text: s, test: t }
-        if (UID != null) { p.UID = UID }
-        return receiver.repeat(p)
-    }
-
-    this.fail = (f, UID = null) => {
-        if (UID = null) {
-            returnonResponseTimeOut.thenAgain(f)
+    this.request = (req, foo, test = oneLine(), UID) => {
+        if (!req || typeof req === 'string' || req instanceof String) {
+            return send_receive(req, foo, test, UID, test ? test.prompt : undefined)
         }
         else {
-            returnonResponseTimeOut.thenAgain(
-                (r) => {
-                    if (r.UID == UID) {
-                        f(r)
-                    }
-                })
+            return send_receive(req.request, req.foo, req.test, req.test ? req.test.prompt : undefined)
         }
-
     }
 
-    this.request = (s, f, t = oneLine()) => {
-        UID = {}
-        var prom = this.listen(
-            (p) => {
-                if (p.UID == UID) {
-                    if (p.fail) {
-                        console.debug(prom)
-                        prom.reject()
-                    }
-                    else {
-                        if (p.text) {
-                            f(p.text)
-                        }
-                        if (p.end) {
-                            prom.resolve()
-                        }
-                    }
-                }
-
-            })
-        this.sendString(s, UID, t)
-        return prom
-    }
+    this.listen = (f) => { return broadcaster.thenAgain(f) }
 
 }
-
-
 
 function untilString(endstring) {
     return (s, f) => {
-        if (s.search(endstring) > -1) { f() }
+        if (endstring.includes(s)) { f() }
     }
 }
 
 
-function untilRexEx(endRedExp) {
+function untilRegEx(endRegExp) {
     return (s, f) => {
-        if (s.search(endRedExp) > -1) { f() }
+        if (endRegExp.test(s)) { f() }
     }
 }
+
+
+
+function untilPrompt(promptRegEx) {
+    var f = () => { }
+    f.prompt = RegExp(promptRegEx)
+    return f
+}
+
+
 
 function untilNumLines(endingN) {
-    var obj = {}
-    return (s, f) => {
+
+    return (s, f, obj) => {
         if (typeof obj.counter == 'undefined') {
             obj.counter = endingN;
         }
         else {
             obj.counter -= 1;
         }
-        if (obj.counter <= 0) { f() }
+        if (obj.counter <= 1) { f() }
     }
 }
 
 
 function untilMilli(endingT) {
-    var obj = {}
-    return (s, f) => {
+
+    return (s, f, obj, fd) => {
         clearTimeout(obj.timer)
-        obj.timer = setTimeout(f, endingT)
+        obj.timer = setTimeout(fd, endingT)
     }
 }
 
@@ -345,24 +413,20 @@ function oneLine() {
     return (s, f) => { f() }
 }
 
-const noRespObj = {} 
+const noRespObj = () => { }
 
 function noResponse() {
     return noRespObj
-}
-
-function version() {
-    return "0.0.4"
 }
 
 
 module.exports = {
     Engine,
     untilString,
-    untilRexEx,
+    untilRegEx,
     untilNumLines,
     untilMilli,
+    untilPrompt,
     oneLine,
     noResponse,
-    version
 }
