@@ -117,7 +117,7 @@ function Engine(host, port) {
 
     var lineBreakTimer = rp.Delay(0)
     lineBreakTimer.clear = true
-    const lineBreak = {}
+    var textInDetector = new Cycle();
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -148,6 +148,7 @@ function Engine(host, port) {
 
                 client.on('data', function (chunk) {
                     let data = chunk.toString()
+                    textInDetector.repeat()
                     if (autoLineBreak) {
                         if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
                         else {
@@ -348,6 +349,7 @@ function Engine(host, port) {
         onReceive.terminate()
         onResponseTimeOut.terminate()
         client.destroy()
+        textInDetector.terminate()
     }
 
     this.request = (req, foo, test = oneLine(), UID) => {
@@ -361,7 +363,25 @@ function Engine(host, port) {
 
     this.listen = (f) => { return broadcaster.thenAgain(f) }
 
+    this.flush = (t = 250) => { return this.request(null, null, untilMilli(t)) }
+
+
+    this.detect = (t = 10000) => {
+
+        var prom = new rp.Defer()
+        sendQueue.enQueue(() => {
+            var dl = new rp.Delay(t)
+            var track = textInDetector.thenAgain(() => { prom.resolve(); dl.fail() })
+            dl.then(prom.fail).then(track.terminate).catch(() => { })
+            if (buffer.length > 0) {prom.resolve(0)}
+            return prom
+        })
+        return prom   
+    }
+
 }
+
+////////////--------------------------------------------------------------------------------------------------------
 
 function untilString(endstring) {
     return (s, f) => {
