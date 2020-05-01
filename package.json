@@ -13,7 +13,7 @@
   "keywords": [
     "telnet",
     "TCP",
-    "websocket",
+    "websocket"
   ],
   "author": "CABrouwers",
   "license": "MIT",
