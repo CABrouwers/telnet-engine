@@ -1,42 +1,30 @@
 const net = require('net');
 const rp = require('repeatable-promise');
 
+function makeEnding(reg) {
+    return new RegExp("(" + reg.source + ")$");
+}
 
-function Queue(val) {
-    var theQueue = Promise.resolve(val)
-
-    this.enQueue = (f, txt) => {
-
-        if (f instanceof Promise) {
-            theQueue = theQueue.then(() => { return f }).catch(() => { })
-        }
-        else {
-            theQueue = theQueue.then(f).catch(() => { })
-        }
-
-        return theQueue
-    }
+function makeStarting(reg) {
+    return new RegExp("^(" + reg.source + ")");
 }
 
 
-
-
-function Engine(host, port) {
+function inEngine(host, port) {
 
     var client;
-
-    var inDelimiter = /\r\n|\r|\n/
+    var inDelimiter = /\r\n|\n\r|\r|\n/
     var inDelimiterChecker = makeEnding(inDelimiter)
+    var outDelimiterInput = undefined
     var outDelimiter = '\n'
     var timeOut = 1500
     var clearOut = 0
     var defaultPrompt = /^/
     var modeStrict = true
     var autoLineBreak = false
+    var autoFlush = false
+    var autoOpen = true
 
-    function makeEnding(reg) {
-        return new RegExp("(" + reg.source + ")$");
-    }
 
 
     Object.defineProperty(this, 'inDelimiter', {
@@ -60,8 +48,6 @@ function Engine(host, port) {
         },
         get: function () { return timeOut; }
     });
-
-
 
 
     Object.defineProperty(this, 'defaultPrompt', {
@@ -94,7 +80,27 @@ function Engine(host, port) {
         get: function () { return autoLineBreak; }
     });
 
+    Object.defineProperty(this, 'autoDetect', {
+        set: function (x) {
+            autoDetect = x ? Number(x) : false
+        },
+        get: function () { return autoDetect; }
+    });
 
+    Object.defineProperty(this, 'autoFlush', {
+        set: function (x) {
+            autoFlush = x ? Number(x) : false
+        },
+        get: function () { return autoFlush; }
+    });
+
+
+    Object.defineProperty(this, 'autoOpen', {
+        set: function (x) {
+            autoOpen = x ? true : false
+        },
+        get: function () { return autoOpen; }
+    });
 
 
     onOpenConnectionConnecting = new rp.Cycle();
@@ -117,10 +123,11 @@ function Engine(host, port) {
 
     var lineBreakTimer = rp.Delay(0)
     lineBreakTimer.clear = true
-    var textInDetector = new Cycle();
+
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
+            var flushFlag = autoFlush
             try {
                 if (client && (!client.pending || client.connecting)) {
                     resolve();
@@ -141,14 +148,17 @@ function Engine(host, port) {
                     function () {
                         clearTimeout(timeOutTimer)
                         onOpenConnectionSuccess.repeat()
-                        resolve()
+                        if (flushFlag) {
+                            var flushDelay = new rp.Delay(flushFlag)
+                            flushDelay.then(() => { resolve(); flushFlag = false })
+                        }
+                        else { resolve() }
                     }
 
                 )
 
                 client.on('data', function (chunk) {
                     let data = chunk.toString()
-                    textInDetector.repeat()
                     if (autoLineBreak) {
                         if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
                         else {
@@ -161,7 +171,7 @@ function Engine(host, port) {
                         }
                     }
 
-                    treat(data)
+                    if (!flushFlag) { treat(data) }
                 })
 
                 client.on('error', () => { onConnectionError.repeat() });
@@ -177,6 +187,12 @@ function Engine(host, port) {
 
         })
     }
+
+    function reOpenConnection() {
+        if (autoOpen) { return openConnection() }
+        return Promise.resolve()
+    }
+
 
     var clearWaiter = rp.Delay(0)
     clearWaiter.clear = true
@@ -202,19 +218,21 @@ function Engine(host, port) {
     var responseTimeout = undefined
     var responseRequest = undefined
     var responseCounter = undefined
-    //  var clearWaiter = Promise.resolve()
+    var responseDelayed = undefined
 
-    var sendQueue = new Queue()
-    sendQueue.enQueue(openConnection())
 
+
+    var sendQueue = new rp.Queue()
 
     const send_receive = (text, foo, test, UID, prompt) => {
         var prom = new rp.Defer()
 
         sendQueue.enQueue(() => {
-
-            openConnection()
-                .then(() => { if (text || text == "") { return sendLine(text) } })
+            reOpenConnection()
+                .then(() => {
+                    if (typeof text == "function" || text instanceof Function) { text = text() }
+                    if (text || text == "") { return sendLine(text) }
+                })
                 .then(() => {
                     if (test == noRespObj) {
                         prom.resolve();
@@ -226,12 +244,14 @@ function Engine(host, port) {
                     }
                     responseRequest = text
                     tmpOjt = {}
-                    responseTest = (s, f, fd) => { test(s, f, tmpOjt, fd) }
+                    responseTest = test ? (s, f) => { test(s, f, tmpOjt) } : (s, f) => { f() }
+                    responseDelayed = test ? test.delayed : false
                     responseUID = UID
                     responsePrompt = prompt
                     responseFoo = foo ? foo : () => { }
                     responseRelease = prom
                     responseTimeout = new rp.Delay(timeOut)
+                    if (!responseDelayed) { responseTimeout.then(() => { responseRelease.fail() }).catch(() => { }) }
                     responseRelease
                         .then(responseTimeout.fail)
                         .catch(() => {
@@ -251,17 +271,19 @@ function Engine(host, port) {
                             responseCounter = undefined
                             responseRequest = undefined
                         })
-                    responseTimeout.then(() => { responseRelease.fail() }).catch(() => { })
                     responseExpected = true
                     treat()
                 }, prom.fail)
         })
+
         sendQueue.enQueue(prom).catch(() => {
             var response = { fail: true }
             if (UID) { response.UID = UID }
             broadcast(response)
         })
+
         return prom
+
     }
 
     var inTreatment = false;
@@ -274,15 +296,15 @@ function Engine(host, port) {
         inTreatment = true;
         var requestWIP = true
         onReceive.repeat()
-        fEnd = (resp, ) => { requestWIP = false, responseRelease.resolve() }
         do {
             if (responseTimeout) { responseTimeout.reset(timeOut) }
             var pe = inDelimiter.exec(buffer)
-            var pr = responsePrompt ? responsePrompt.exec(buffer) : null
 
+            //if (pe && ! outDelimiterInput){outDelimiter = pe[0]}
+            var pr = pe || !responsePrompt ? null : responsePrompt.exec(buffer)
             if (pe || pr) {
                 var indexStart, indexEnd, promptEnd
-                if (pr && (!pe || pr.index <= pe.index)) {
+                if (pr) {
                     indexStart = pr.index + pr[0].length
                     indexEnd = indexStart
                     promptEnd = true
@@ -302,8 +324,8 @@ function Engine(host, port) {
                     if (responseFoo) { responseFoo(sub) }
                     if (promptEnd) { requestWIP = false, responseRelease.resolve(), response.end = true, response.prompt = true }
                     else {
-                        responseTest(sub, () => { requestWIP = false; responseRelease.resolve(); response.end = true },
-                            () => {
+                        if (responseDelayed) {
+                            responseTest(sub, () => {
                                 requestWIP = false
                                 responseRelease.resolve();
                                 var interResponse = { end: true };
@@ -311,12 +333,20 @@ function Engine(host, port) {
                                 if (responseRequest || responseRequest == "") { interResponse.request = responseRequest }
                                 broadcast(interResponse)
                             })
-                    }
+                        }
+                        else {
+                            responseTest(sub, () => {
 
-                    broadcast(response)
-                    buffer = buffer.slice(indexEnd)
+                                requestWIP = false; responseRelease.resolve(); response.end = true
+                            })
+                        }
+                    }
+                    if (responseFoo) { responseFoo(response) }
                 }
+                broadcast(response)
+                buffer = buffer.slice(indexEnd)
             }
+
         } while (requestWIP && (pe || pr))
         inTreatment = false
     }
@@ -329,15 +359,18 @@ function Engine(host, port) {
 
 
     ////////////--------------------------------------------------------------------------------------------------------
-    this.wait = (t) => {
-        sendQueue.enQueue(new rp.Delay(t))
+
+
+
+
+    this.open = () => {
+        sendQueue.enQueue(openConnection())
     }
 
 
     this.terminate = () => {
         sendQueue.enQueue(this.destroy)
     }
-
 
     this.destroy = () => {
         broadcaster.terminate()
@@ -349,43 +382,108 @@ function Engine(host, port) {
         onReceive.terminate()
         onResponseTimeOut.terminate()
         client.destroy()
-        textInDetector.terminate()
     }
 
-    this.request = (req, foo, test = oneLine(), UID) => {
-        if (!req || typeof req === 'string' || req instanceof String) {
-            return send_receive(req, foo, test, UID, test ? test.prompt : undefined)
-        }
-        else {
-            return send_receive(req.request, req.foo, req.test, req.test ? req.test.prompt : undefined)
-        }
+
+    this.request = (req) => {
+        return send_receive(req.request, req.foo, req.test, req.test ? req.test.prompt : undefined)
     }
 
-    this.listen = (f) => { return broadcaster.thenAgain(f) }
+    this.requestString = (req, foo, test = oneLine(), UID) => {
+        return send_receive(req,
+            (r) => { if (r.response) { foo(r.response) } }, test, UID, test ? test.prompt : undefined)
+    }
 
-    this.flush = (t = 250) => { return this.request(null, null, untilMilli(t)) }
+
+    this.listen = (foo) => { return broadcaster.thenAgain(foo) }
 
 
-    this.detect = (t = 10000) => {
 
-        var prom = new rp.Defer()
-        sendQueue.enQueue(() => {
-            var dl = new rp.Delay(t)
-            var track = textInDetector.thenAgain(() => { prom.resolve(); dl.fail() })
-            dl.then(prom.fail).then(track.terminate).catch(() => { })
-            if (buffer.length > 0) {prom.resolve(0)}
-            return prom
+    this.listenString = (foo) => { return broadcaster.thenAgain((r) => { if (r.response) { foo(r.response) } }) }
+
+
+    this.flush = (t = 1000) => { return this.request(null, null, untilMilli(t)) }
+}
+
+const fakeEngine = {}
+fakeEngine.wait = () => { }
+fakeEngine.request = () => { }
+fakeEngine.requestString = () => { }
+fakeEngine.flush = () => { }
+fakeEngine.listen = () => { }
+fakeEngine.listenString = () => { }
+
+fakeEngine.do = () => { }
+fakeEngine.terminate = () => { }
+fakeEngine.destroy = () => { }
+fakeEngine.release = () => { }
+fakeEngine.proxy = () => { }
+
+function Engine(host, port, predecessor) {
+    var myEngine
+    var commandQueue = new rp.Queue()
+
+    this.wait = (t) => {
+        commandQueue.enQueue(new rp.Delay(t))
+    }
+
+
+    this.request = (req) => {
+        return commandQueue.enQueue(
+            () => { return myEngine.request(req) })
+    }
+
+
+    this.requestString = (req, foo, test = oneLine(), UID) => {
+        return commandQueue.enQueue(
+            () => { return myEngine.requestString(req, foo, test, UID) })
+
+        this.listen = (foo) => { return myEngine.listen(foo) }
+
+        this.listenString = (foo) => { return myEngine.listenString(foo) }
+
+        this.flush = (t = 1000) => { return myEngine.flush(t) }
+
+        this.do = (f) => {
+            return commandQueue.enQueue(f)
+        }
+
+    }
+
+
+    if (!predecessor) {
+        myEngine = new inEngine(host, port)
+        this.terminate = () => { commandQueue.enQueue(myEngine.terminate) }
+        this.destroy = myEngine.destroy
+    }
+    else {
+        myEngine = predecessor.engine
+        commandQueue.enQueue(() => { return predecessor.sema })
+        this.release = () => { commandQueue.enQueue(() => { predecessor.lock.resolve() }) }
+        predecessor.lock.then(() => { myEngine = fakeEngine })
+    }
+
+    this.proxy = (timeOut) => {
+        var lock = new rp.Delay(timeOut)
+        var sema = new rp.Defer()
+        commandQueue.enQueue(() => {
+            sema.resolve()
+            return lock
         })
-        return prom   
+        return new Engine(null, null, { lock: lock, sema: sema, engine: myEngine })
     }
 
 }
+
+
+
+
 
 ////////////--------------------------------------------------------------------------------------------------------
 
 function untilString(endstring) {
     return (s, f) => {
-        if (endstring.includes(s)) { f() }
+        if (s.includes(endstring)) { f() }
     }
 }
 
@@ -407,8 +505,8 @@ function untilPrompt(promptRegEx) {
 
 
 function untilNumLines(endingN) {
-
     return (s, f, obj) => {
+
         if (typeof obj.counter == 'undefined') {
             obj.counter = endingN;
         }
@@ -421,11 +519,12 @@ function untilNumLines(endingN) {
 
 
 function untilMilli(endingT) {
-
-    return (s, f, obj, fd) => {
+    var test = (s, f, obj) => {
         clearTimeout(obj.timer)
-        obj.timer = setTimeout(fd, endingT)
+        obj.timer = setTimeout(f, endingT)
     }
+    test.delayed = true
+    return test
 }
 
 
