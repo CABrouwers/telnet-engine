@@ -10,16 +10,23 @@ function makeStarting(reg) {
 }
 
 
+function RegExize(x) {
+    if (typeof x === 'string' || x instanceof String) {
+        x = x.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&')
+    }
+    return RegExp(x)
+}
+
+
 function inEngine(host, port) {
 
     var client;
     var inDelimiter = /\r\n|\n\r|\r|\n/
     var inDelimiterChecker = makeEnding(inDelimiter)
-    var outDelimiterInput = undefined
     var outDelimiter = '\n'
     var timeOut = 1500
     var clearOut = 0
-    var defaultPrompt = /^/
+    var defaultPrompt = /^$/
     var modeStrict = true
     var autoLineBreak = false
     var autoFlush = false
@@ -29,7 +36,7 @@ function inEngine(host, port) {
 
     Object.defineProperty(this, 'inDelimiter', {
         set: function (x) {
-            inDelimiter = new RegExp(x)
+            inDelimiter = new RegExize(x)
             inDelimiterChecker = makeEnding(inDelimiter)
         },
         get: function () { return inDelimiter; }
@@ -51,8 +58,8 @@ function inEngine(host, port) {
 
 
     Object.defineProperty(this, 'defaultPrompt', {
-        set: function (x = /^/) {
-            defaultPrompt = x
+        set: function (x) {
+            defaultPrompt = RegExize(x)
         },
         get: function () { return defaultPrompt; }
     });
@@ -101,6 +108,33 @@ function inEngine(host, port) {
         },
         get: function () { return autoOpen; }
     });
+
+
+    this.makeReverser = () => {
+        var xinDelimiter = inDelimiter
+        var xinDelimiterChecker = inDelimiterChecker
+        var xoutDelimiter = outDelimiter
+        var xtimeOut = timeOut
+        var xclearOut = clearOut
+        var xdefaultPrompt = defaultPrompt
+        var xmodeStrict = modeStrict
+        var xautoLineBreak = autoLineBreak
+        var xautoFlush = autoFlush
+        var xautoOpen = autoOpen
+
+        return () => {
+            inDelimiter = xinDelimiter
+            inDelimiterChecker = xinDelimiterChecker
+            outDelimiter = xoutDelimiter
+            timeOut = xtimeOut
+            clearOut = xclearOut
+            defaultPrompt = xdefaultPrompt
+            modeStrict = xmodeStrict
+            autoLineBreak = xautoLineBreak
+            autoFlush = xautoFlush
+            autoOpen = xautoOpen
+        }
+    }
 
 
     onOpenConnectionConnecting = new rp.Cycle();
@@ -205,8 +239,15 @@ function inEngine(host, port) {
         }
     }
 
-    function sendLine(text) {
-        return clearWaiter.then(() => { client.write(text + outDelimiter) })
+    const sender = new rp.Cycle()
+
+    function sendLine(text, UID) {
+        return clearWaiter.then(() => {
+            client.write(text + outDelimiter);
+            var msg = { request: text }
+            if (responseUID) { msg.UID = UID }
+            sender.repeat(msg)
+        })
     }
 
     var responseExpected = false
@@ -219,6 +260,7 @@ function inEngine(host, port) {
     var responseRequest = undefined
     var responseCounter = undefined
     var responseDelayed = undefined
+    var responseArray = []
 
 
 
@@ -226,12 +268,11 @@ function inEngine(host, port) {
 
     const send_receive = (text, foo, test, UID, prompt) => {
         var prom = new rp.Defer()
-
         sendQueue.enQueue(() => {
             reOpenConnection()
                 .then(() => {
                     if (typeof text == "function" || text instanceof Function) { text = text() }
-                    if (text || text == "") { return sendLine(text) }
+                    if (text || text == "") { return sendLine(text, responseUID) }
                 })
                 .then(() => {
                     if (test == noRespObj) {
@@ -242,16 +283,22 @@ function inEngine(host, port) {
                         broadcast(interResponse)
                         return
                     }
+                    responseFoo = foo
                     responseRequest = text
                     tmpOjt = {}
                     responseTest = test ? (s, f) => { test(s, f, tmpOjt) } : (s, f) => { f() }
                     responseDelayed = test ? test.delayed : false
                     responseUID = UID
                     responsePrompt = prompt
-                    responseFoo = foo ? foo : () => { }
                     responseRelease = prom
                     responseTimeout = new rp.Delay(timeOut)
-                    if (!responseDelayed) { responseTimeout.then(() => { responseRelease.fail() }).catch(() => { }) }
+                    if (!responseDelayed) {
+                        responseTimeout.then(() => {
+                            responseRelease.fail(responseArray);
+                            onResponseTimeOut.repeat()
+                        })
+                            .catch(() => { })
+                    }
                     responseRelease
                         .then(responseTimeout.fail)
                         .catch(() => {
@@ -270,6 +317,7 @@ function inEngine(host, port) {
                             responseTimeout = undefined
                             responseCounter = undefined
                             responseRequest = undefined
+                            responseArray = []
                         })
                     responseExpected = true
                     treat()
@@ -281,7 +329,6 @@ function inEngine(host, port) {
             if (UID) { response.UID = UID }
             broadcast(response)
         })
-
         return prom
 
     }
@@ -299,8 +346,6 @@ function inEngine(host, port) {
         do {
             if (responseTimeout) { responseTimeout.reset(timeOut) }
             var pe = inDelimiter.exec(buffer)
-
-            //if (pe && ! outDelimiterInput){outDelimiter = pe[0]}
             var pr = pe || !responsePrompt ? null : responsePrompt.exec(buffer)
             if (pe || pr) {
                 var indexStart, indexEnd, promptEnd
@@ -316,32 +361,32 @@ function inEngine(host, port) {
                 }
                 let sub = buffer.slice(0, indexStart)
                 response = { response: sub }
+                if (pe) { response.terminator = pe[0] }
                 if (responseExpected) {
+                    var resolved = false
                     responseCounter = responseCounter ? responseCounter + 1 : 1
                     response.count = responseCounter
                     if (responseUID) { response.UID = responseUID }
                     if (responseRequest || responseRequest == "") { response.request = responseRequest }
-                    if (responseFoo) { responseFoo(sub) }
-                    if (promptEnd) { requestWIP = false, responseRelease.resolve(), response.end = true, response.prompt = true }
+                    if (promptEnd) { requestWIP = false; response.end = true; response.prompt = pr[0]; resolved = true }
                     else {
                         if (responseDelayed) {
                             responseTest(sub, () => {
                                 requestWIP = false
-                                responseRelease.resolve();
-                                var interResponse = { end: true };
+                                responseRelease.resolve(responseArray);
+                                var interResponse = { end: true, delayed: true };
                                 if (responseUID) { interResponse.UID = responseUID }
                                 if (responseRequest || responseRequest == "") { interResponse.request = responseRequest }
                                 broadcast(interResponse)
                             })
                         }
                         else {
-                            responseTest(sub, () => {
-
-                                requestWIP = false; responseRelease.resolve(); response.end = true
-                            })
+                            responseTest(sub, () => { resolved = true; requestWIP = false; response.end = true })
                         }
                     }
-                    if (responseFoo) { responseFoo(response) }
+                    if (responseFoo) { responseArray[responseCounter - 1] = responseFoo(response) }
+                    else { responseArray[responseCounter - 1] = response }
+                    if (resolved) { responseRelease.resolve(responseArray) }
                 }
                 broadcast(response)
                 buffer = buffer.slice(indexEnd)
@@ -352,9 +397,9 @@ function inEngine(host, port) {
     }
 
     const broadcaster = new rp.Cycle()
-
+    var broadcastQueue = Promise.resolve()
     function broadcast(line) {
-        broadcaster.repeat(line)
+        broadcastQueue = broadcaster.repeat(line)
     }
 
 
@@ -374,6 +419,7 @@ function inEngine(host, port) {
 
     this.destroy = () => {
         broadcaster.terminate()
+        client.destroy()
         onOpenConnectionConnecting.terminate()
         onOpenConnectionSuccess.terminate()
         onOpenConnectionTimeOut.terminate()
@@ -381,7 +427,6 @@ function inEngine(host, port) {
         onConnectionEnd.terminate()
         onReceive.terminate()
         onResponseTimeOut.terminate()
-        client.destroy()
     }
 
 
@@ -389,9 +434,10 @@ function inEngine(host, port) {
         return send_receive(req.request, req.foo, req.test, req.test ? req.test.prompt : undefined)
     }
 
-    this.requestString = (req, foo, test = oneLine(), UID) => {
-        return send_receive(req,
-            (r) => { if (r.response) { foo(r.response) } }, test, UID, test ? test.prompt : undefined)
+    this.requestString = (req, test = oneLine(), foo, UID) => {
+        return send_receive(req, foo ? (r) => { if (r.response || r.response == "") { return foo(r.response) } } :
+            (r) => { if (r) { return r.response } },
+            test, UID, test ? test.prompt : undefined)
     }
 
 
@@ -399,11 +445,33 @@ function inEngine(host, port) {
 
 
 
-    this.listenString = (foo) => { return broadcaster.thenAgain((r) => { if (r.response) { foo(r.response) } }) }
+    this.listenString = (foo, UID) => {
+        if (UID) {
+            return broadcaster.thenAgain((r) => { if (r.response && r.UID == UID) { foo(r.response) } })
+        }
+        else {
+            return broadcaster.thenAgain((r) => { if (r.response) { foo(r.response) } })
+        }
+    }
 
 
-    this.flush = (t = 1000) => { return this.request(null, null, untilMilli(t)) }
+    this.echo = (foo) => { return sender.thenAgain(foo) }
+
+
+    this.echoString = (foo, UID) => {
+        if (UID) { return sender.thenAgain((r) => { if (r.UID == UID) { foo(r.request) } }) }
+        else { return sender.thenAgain((r) => { foo(r.request) }) }
+    }
+
+
+    this.flush = (t = 1000) => { return this.requestString(null, untilMilli(t)) }
 }
+
+
+////////////--------------------------------------------------------------------------------------------------------
+
+
+
 
 const fakeEngine = {}
 fakeEngine.wait = () => { }
@@ -420,8 +488,12 @@ fakeEngine.release = () => { }
 fakeEngine.proxy = () => { }
 
 function Engine(host, port, predecessor) {
+
+
+
     var myEngine
     var commandQueue = new rp.Queue()
+    var reverser
 
     this.wait = (t) => {
         commandQueue.enQueue(new rp.Delay(t))
@@ -433,19 +505,33 @@ function Engine(host, port, predecessor) {
             () => { return myEngine.request(req) })
     }
 
-
-    this.requestString = (req, foo, test = oneLine(), UID) => {
+    this.requestString = (req, test = oneLine(), foo, UID) => {
         return commandQueue.enQueue(
-            () => { return myEngine.requestString(req, foo, test, UID) })
+            () => { return myEngine.requestString(req, test, foo, UID) })
+    }
 
-        this.listen = (foo) => { return myEngine.listen(foo) }
+    this.listen = (foo) => { return myEngine.listen(foo) }
 
-        this.listenString = (foo) => { return myEngine.listenString(foo) }
+    this.listenString = (foo, UID) => {
+        return myEngine.listenString(foo, UID)
+    }
 
-        this.flush = (t = 1000) => { return myEngine.flush(t) }
+    this.echo = (foo) => { return myEngine.echo(foo) }
 
-        this.do = (f) => {
-            return commandQueue.enQueue(f)
+    this.echoString = (foo) => { return myEngine.echoString(foo) }
+
+    this.flush = (t = 1000) => { return commandQueue.enQueue(() => { return myEngine.flush(t) }) }
+
+    this.do = (f) => {
+        return commandQueue.enQueue(f)
+    }
+
+
+    function disableProxy() {
+        if (myEngine != fakeEngine) {
+            myEngine = fakeEngine;
+            reverser();
+            predecessor.lock.resolve()
         }
 
     }
@@ -453,14 +539,15 @@ function Engine(host, port, predecessor) {
 
     if (!predecessor) {
         myEngine = new inEngine(host, port)
-        this.terminate = () => { commandQueue.enQueue(myEngine.terminate) }
+        this.terminate = () => { return commandQueue.enQueue(myEngine.terminate) }
         this.destroy = myEngine.destroy
     }
     else {
         myEngine = predecessor.engine
+        reverser = myEngine.makeReverser()
         commandQueue.enQueue(() => { return predecessor.sema })
-        this.release = () => { commandQueue.enQueue(() => { predecessor.lock.resolve() }) }
-        predecessor.lock.then(() => { myEngine = fakeEngine })
+        this.release = () => { return commandQueue.enQueue(disableProxy) }
+        predecessor.lock.then(disableProxy)
     }
 
     this.proxy = (timeOut) => {
@@ -472,6 +559,17 @@ function Engine(host, port, predecessor) {
         })
         return new Engine(null, null, { lock: lock, sema: sema, engine: myEngine })
     }
+
+    Object.defineProperty(this, 'inDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'inDelimiter'))
+    Object.defineProperty(this, 'outDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'outDelimiter'))
+    Object.defineProperty(this, 'timeOut', Object.getOwnPropertyDescriptor(myEngine, 'timeOut'))
+    Object.defineProperty(this, 'defaultPrompt', Object.getOwnPropertyDescriptor(myEngine, 'defaultPrompt'))
+    Object.defineProperty(this, 'clearOut', Object.getOwnPropertyDescriptor(myEngine, 'clearOut'))
+    Object.defineProperty(this, 'modeStrict', Object.getOwnPropertyDescriptor(myEngine, 'modeStrict'))
+    Object.defineProperty(this, 'autoLineBreak', Object.getOwnPropertyDescriptor(myEngine, 'autoLineBreak'))
+    Object.defineProperty(this, 'autoDetect', Object.getOwnPropertyDescriptor(myEngine, 'autoDetect'))
+    Object.defineProperty(this, 'autoFlush', Object.getOwnPropertyDescriptor(myEngine, 'autoFlush'))
+    Object.defineProperty(this, 'autoOpen', Object.getOwnPropertyDescriptor(myEngine, 'autoOpen'))
 
 }
 
@@ -500,6 +598,13 @@ function untilPrompt(promptRegEx) {
     var f = () => { }
     f.prompt = RegExp(promptRegEx)
     return f
+}
+
+
+function untilTrue(test) {
+    return (s, f) => {
+        if (test(s)) { f() }
+    }
 }
 
 

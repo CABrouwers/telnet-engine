@@ -1,13 +1,6 @@
-te = require("telnet-engine")
-console.debug(te)
-rp = require("repeatable-promise")
-en = new te.Engine("telehack.com", 23) //establishes the communication
-//en.truc()
-en.inDelimiter = /\r\n/ //.|\r\n/
-en.outDelimiter = "\r\n"
-//ls = en.listenString((s) => { console.debug(">", s) })
-de = rp.Delay(5000)
-de.then(() => {
-   // en.sendString("eliza")
-})
-console.debug("et alorsÉ")
+var te = require("telnet-engine")
+var en = new te.Engine("rainmaker.wunderground.com", 23)
+en.requestString(null, te.untilPrompt("Press Return to continue:"))        //nothing one with the response
+en.requestString("", te.untilPrompt("-- "), console.log)                 //prints every line
+en.requestString("NYC", te.untilMilli(500), (s) => { console.log(s.slice(0, 10)) })    //prints 10 characters of every line
+en.terminate()
