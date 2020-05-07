@@ -158,7 +158,7 @@ function inEngine(host, port) {
     var lineBreakTimer = rp.Delay(0)
     lineBreakTimer.clear = true
 
-    const rawReceiver = new Cycle()
+    const rawReceiver = new rp.Cycle()
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
