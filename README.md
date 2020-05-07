@@ -2,7 +2,7 @@
 
 # telnet-engine
 
-The goal of this module is to provide a simple way to manage a dialog with a telnet server over IP.  It is meant to simplify sending queries to a server and treat the responses asynchronously. The Engine establishes one socket to the server, which can be used asynchronously from different parts of the code. The Engine ensures that the link is up, queues, and, if necessary, spaces the requests and matches responses with the corresponding query. 
+The goal of this module is to provide a simple way to manage a dialog with a telnet server over IP.  It is meant to simplify sending queries to a server and treating the responses asynchronously. The Engine establishes one socket to the server, which can be used asynchronously from different parts of the code. The Engine ensures that the link is up, queues, and, if necessary, spaces the requests and matches responses with the corresponding query. 
 
 This guide is organized into two sections:
 
@@ -17,9 +17,11 @@ The communication is established by the telnet-engine constructor, which takes t
 
   ```new Engine(host,port)```
 
-Every time the **Engine** uses the connection, it checks first that it is up, and if necessary, attempts to reopen the socket. 
+Every time the **Engine** uses the connection, it checks first that the communication is up, and if necessary, attempts to reopen the socket. 
 
-Several properties of the **Engine** can be modified to customize its behavior, see the Reference section for details. 
+Several properties of the **Engine** can be modified to adjust its behavior, see the Reference section for details. 
+
+An Engine maintains a FIFO command queue. Most methods put a command in the queue. Commands are executed sequentially in the order they were entered in the queue, and a command has to complete before the next one starts. 
 
 ### Example 
 ```
@@ -28,6 +30,9 @@ var en = new te.Engine("rainmaker.wunderground.com",23)
 en.listenString(console.log)
 en.flush() // every message from the server will be printed
 ```
+The ``en.listenString(foo) ``  method instructs the **Engine** to send every incoming line of text to the function **foo**. 
+``en.flush() `` asks the engine to process the text in the server buffer.
+
 ### Output
 ```
 ------------------------------------------------------------------------------
@@ -43,13 +48,11 @@ en.flush() // every message from the server will be printed
 *                                                                            *
 ------------------------------------------------------------------------------
 ```
-The ``en.listenString(foo) ``  method instructs the **Engine** to send every incoming line of text to the function foo. 
-``en.flush() `` asks the engine to process the text in the server buffer.
 
-## Sending a request. 
+## Sending a query. 
 
 The method ```requestString() ``` provides a way to send a one-line of text to the server and process a response.
-In its basic form, it takes one argument: a **string** and expects one line of text in return. 
+In its basic form, it takes one argument,  a **string**, and expects one line of text in return. 
 
 ### Example 
 ```
@@ -75,12 +78,12 @@ or enter 3 letter forecast city code--
 ```
 By default, **sendString** expects one line of text in response. 
 
-Engine methods create commands that are put on a queue. Commands are executed sequentially in the order they were entered on the queue, and a command has to complete before the next one starts. 
+Engine methods create commands that are put in a queue. Commands are executed sequentially in the order they were entered on the queue, and a command has to complete before the next one starts. 
 
 ## Sending a request and accepting a multiline response. 
- ```requestString() ```  accepts an addition parameter representing a test function to determine the end of the response from the server. The call-back function will be applied to each line received from the server. 
+ ```requestString() ```  accepts an addition parameter representing a test function to determine the end of the response from the server. The test function will be called with each line received from the server as an argument. 
  
- In general, there is no need for a custom test function; the module provides a set of test function generators that cover most of the use cases. 
+ In general, there is no need to program the test function; the module provides a set of test function generators that can create them automatically in most use cases. 
   
 ### Example 
 ```
@@ -91,6 +94,7 @@ en.listenString((s)=>{console.log(n+">",s);n= n+1})
 en.requestString("",te.untilNumLines(6))
 en.terminate()
 ```
+```te.untilNumLines(6) ``` generates a test function that expects six lines of text in a response.
 ### Output
 ```
 1 > ------------------------------------------------------------------------------
@@ -102,25 +106,26 @@ en.terminate()
 ```
 ### Test function generators
 
-The following test function generators are includes on the module. Generators are functions that return a custom test function based on the input parameter; they take care of the implementation details.  It is the test function that needs to be passed to the request, not the generator. 
+The following test function generators are included in the module. Generators are functions that return a test function based on the input parameter; they take care of implementation details.  It is the test function that needs to be passed to the request, not the generator. 
 
 | Generator| Use 
 | ------------- |----
 |```te.untilString(s)```    |        The last line of the response contains the string s
 |```te.untilRegEx(r)```    |        The last line of the response contains the regular expression r
-|```untilPrompt(s)```    |          Until the prompt **s** appears in an unterminated response
+|```untilPrompt(s)```    |          Until the prompt **s** appears in an unterminated response line
 |```te.untilNumLines(n)```|        The response contains n lines
-|```te.untilMilli(t)```    |        The reponse is complete if no message has been received in the last t milliseconds. 
+|```te.untilMilli(t)```    |        The reponse is complete if no more text is received after a pause of t milliseconds. 
 |```te.oneLine()```    |            The response contains one line (default)
 |```te.noResponse()```    |            No response expected
-|```te.untilTrue(f)```    |     This is a generic generator.  **f** is an arbitrary test function, it should accept a line of text and return **true** if it detects the last line of a response.
+|```te.untilTrue(f)```    |     This is a generic generator.  **f** is an arbitrary test function that should accept a line of text as an argument and return **true** if it detects the last line of a response.
 
 if omitted, ```te.oneLine()``` is the default.
 
 ### Example 
+```en.echoString(foo)``` tells the **Engine** to pass a copy of every line of text sent to the server to the function **foo**.
 ```
 en.listenString(console.log)
-en.echoString((s)=>{console.log("->",s)}) // apply function to each sent line
+en.echoString((s)=>{console.log("->",s)}) 
 en.requestString(null,te.untilPrompt("Press Return to continue:"))
 en.requestString("",te.untilPrompt("-- "))
 en.requestString("NYC",te.untilMilli(500))
@@ -169,7 +174,7 @@ winds 5 to 10 mph, becoming southwest with gusts up to 20 mph in
 the afternoon. Chance of rain 60 percent. 
 ```
 ## Processing a response line.
- ```requestString() ```  also accept a string processing function as a third argument. Each line of text received is passsed to this function.  
+ ```requestString() ```  also accepts a string processing function as a third argument. Each line of text received is passsed to this function.  
  
 ### Example 
 In this example, ```listenString()``` is not used, but the function passed to  ```requestString() ``` takes care of printing the incoming lines of text.
@@ -177,14 +182,14 @@ In this example, ```listenString()``` is not used, but the function passed to  `
 ```
 var te = require("telnet-engine")
 var en = new te.Engine("rainmaker.wunderground.com",23) 
-en.requestString(null,te.untilPrompt("Press Return to continue:"))        //nothing one with the response
+en.requestString(null,te.untilPrompt("Press Return to continue:"))     //nothing done with the response
 en.requestString("",te.untilPrompt("-- "),console.log)                 //prints every line
 en.requestString("NYC",te.untilMilli(500),(s)=>{console.log(s.slice(0,10))})    //prints 10 characters of every line
 en.terminate()
 ```
 ### Output
 ```
-ress Return for menu
+Press Return for menu
 or enter 3 letter forecast city code-- 
 Weather Co
 Temp(F)   
@@ -213,9 +218,9 @@ the aftern
 
 ## Requests as Promises
 
-```requestString() ```  returns a **Promise** and executes asynchronously. Once the request is completed, that is, once the end test is met, the **Promise** is fulfilled. If the request times out, the **Promise** is rejected. The status of the **Promise** can be captured by the **then/catch/finally*** construct.
+```requestString() ```  returns a **Promise** and executes asynchronously. Once the request is completed, that is, once the end test is met, the **Promise** is fulfilled. If the request times out, the **Promise** is rejected. The status of the **Promise** can be captured by the **then/catch/finally** construct.
 
-The resolution value of the **Promise**, as well as its rejection value, is an array of string representing all the lines received as part of the response or an array of the value returned by the  ```requestString() ```   argument function is it is present.
+The resolution value of the **Promise**, as well as its rejection value, is an array of string representing all the lines received as part of the response or an array of the value returned by the  ```requestString() ```   processing function is it is present.
 
 ### Example 
 ```
@@ -255,10 +260,10 @@ Press Return for menu
 5=== finished
 ```
 
-Notice the order in which the output lines appear. It reflects the fact that the operation of the Engine is asynchronous. In this case, the calls to the call-back function ```console.log```in ```listenString(console.log)```  are intertwined with the resolution of the firs then/catch construct.
+Notice the order in which the output lines appear. It reflects the fact that the operation of the Engine is asynchronous. In this case, the calls to the call-back function ```console.log```in ```listenString(console.log)```  are intertwined with the resolution of the first **then/catch** construct.
 
 ### Example 
-In this example, we use the fact that the resolution of ```requestString()``` returns an array.  The first request doesn't include a call-back function, so the returned array is composed of the text line received. The second request includes a call-back function, so the array is made of the values returned by that function (in the length of each line of text).
+In this example, we use the fact that the resolution of ```requestString()``` returns an array.  The first request doesn't include a processing function, so the returned array is composed of the lines of text received. The second request includes a processing function, so the array is made of the values returned by that function (i.e., the length of each line of text).
 ```
 var te = require("telnet-engine")
 var en = new te.Engine("rainmaker.wunderground.com",23)
@@ -294,7 +299,7 @@ en.terminate())
 
 ## Timing of execution
 
-The Engine queues commands (see Reference for exceptions) and processes them sequentially in the order received. The Engine also waits until a request to the server is fulfilled before sending the next one. Code containing a succession of requests as in the previous example will execute without a problem; even is the program includes multiple sequences in different parts of the program. Each sequence will be executed from end to end uninterrupted.
+Engine methods put commands in its FIFO  queue (see Reference for exceptions), and the Engine processes them sequentially in the order received. The Engine also waits until a request to the server is fulfilled before sending the next one. Code containing a succession of requests will execute from end to end without a problem; even is the program includes multiple sequences in different parts of the program. Each sequence will be executed from end to end uninterrupted.
 
 ```requestString() ``` as well as the most of Engine methods return Promises and execute Asynchronously
 
@@ -304,6 +309,7 @@ There will be many situations in which the output of one **Request** will determ
 A useful feature in such cases is the fact that the text argument of a request can be replaced by a function that returns a string. The function will be calculated just before the **Engine** sends the line of the text to the server.
 
 ### Example 
+In this example the processing function **f1** detects and stores the digits at the beginning of the line containing the words "Canad". **f2**  theses numbers as the text of the second query. 
 ```
 var te = require("telnet-engine")
 var en = new te.Engine("rainmaker.wunderground.com",23)
@@ -321,7 +327,7 @@ f2= ()=>{return lineNumber}
 en.requestString(f2,te.untilMilli(100))
 en.terminate()
 ```
-It is important to keep in mind that this entire block of code is executed first and the **request**s as well as **f1** and **f2** will be executed later. This is why the the line ```lineNumber = 236 ```has not effect, the value 236 is overwritten later when **f1** is executed. 
+It is important to keep in mind that this entire block of code is executed first and the **request**s as well as **f1** and **f2** are executed later. This is why the the line ```lineNumber = 236 ```has not effect, the value 236 is overwritten later when **f1** is executed. 
 
 ### Output
 ```
@@ -378,10 +384,12 @@ or enter 3 letter forecast city code--
 
 ### Promise chaining
 
-Promise chaining is one other way to manage conditional execution, and it allows for much more complicated chains of requests and truly conditional execution. A  reminder, most **Engine** method returns a **Promise** that is resolved once the request is fulfilled. If the content of a request determines what type of request must follow, promise chaining can be the solution. This approach allows delaying to put a Request on the Engine execution queue until a previous request is fulfilled. 
+Promise chaining is another way to manage conditional execution; it allows for much more complicated chains of requests and truly conditional execution. Most **Engine** methods, including **request()**, return  a **Promise** that is resolved once the command is completed. If the content of a request determines what type of request must follow, promise chaining can be the solution. This approach allows delaying putting a Request on the Engine execution queue until a previous request is fulfilled. 
 
 ### Example 
-In this example, we ask for the weather report in NYC and then either the report for MIA or BOS depending on whether the temperature in NYC is an odd or even number.
+In this example, we ask for the weather report in NYC and then either the report for MIA or BOS, depending on whether the temperature in NYC is an odd or even number.
+
+The processing function **f1** captures the digits of the temperature and stores them in a variable. This variable **temp** is used later in the **then()** for an **If** branching. 
 ```
 var te = require(".telnet-engine")
 var en = new te.Engine("rainmaker.wunderground.com",23)
@@ -466,14 +474,19 @@ The temperature in NYC is 57 F
 ```
 ### Watch out!
 
-The order of execution is a little tricky, and it is easy to make an error.  It is important to remember the rules:
-- Engine methods place commands on the FIFO Engine queue.
-- The commands are executed asynchronously at a later time in the order they were placed in the queue.
-- The code placed within a **then()**  is executed when the commands are completed
-- If a  **then()**  code includes a call to an Engine method, the corresponding command will be placed at the end of the execution queue. 
+Tracking the order of execution is somewhat tricky, and it is easy to make errors.  
 
-Here are two easy errors
+It is important to remember some key principles:
+- Engine methods place commands on the FIFO Engine queue.
+- Commands are executed asynchronously at a later time, in the order they were placed in the queue.
+- The code placed within a **then()**  is executed when the corresponding command is completed
+- If a  **then()**  code includes a call to an Engine method, the corresponding command will be placed at the end of the execution queue. 
+- If another level of **then/catch/finally** exists and is supposed to wait for the completion of a command, it is necessary that the **Promise** of generated by the engine method, i.e., **request()** be returned. 
+
+Here are three easy errors
 #### First easy error
+
+Putting the test at the "first level" of code.
 ```
 var te = require("telnet-engine")
 var en = new te.Engine("rainmaker.wunderground.com",23)
@@ -489,21 +502,44 @@ en.requestString("",te.untilPrompt("-- "))
 en.requestString("NYC",te.untilPrompt("exit:"),f1) //capture the digit of the temperature
 en.requestString("",te.untilPrompt("menu:"))
 en.requestString("",te.untilMilli(100))
-if(temp % 2 == 0){en.requestString("MIA",te.untilMilli(100))}
+if(temp % 2 == 0){en.requestString("MIA",te.untilMilli(100))}   // <------- PROBLEM
 else {en.requestString("BOS",te.untilMilli(100))}
 ```
-The "first level of code" is executed placing the immedidate requests in the queue at that time   the ```if(temp % 2 == 0)``` clause is also executed but it is before any request is actually completed so the value of **temp** is indeterminate. the concludion is that **Any logical branching dependant on the result of a request needs to be inserted in a then() construct***
+When the "first level" of code is executed  it places the first level of commands in the queue at once.  At that time the test ```if(temp % 2 == 0)``` is also executed but it is before any command is actually completed so the value of **temp** is indeterminate. 
+
+The conclusion is that **Any logical branching dependant on the result of a request needs to be inserted in a then() construct***
 
 ####  Second easy error
+
+Following a **them/catch/finally** construct with first-level code. 
 
 ```
 en.requestString("",te.untilMilli(100))
     .then(()=>{if(temp % 2 == 0){return en.requestString("MIA",te.untilMilli(100))}
         else {return en.requestString("BOS",te.untilMilli(100))}})
     .catch(()=>{console.log("Something went wrong")}
-en.terminate()
+en.terminate()     // <------- PROBLEM
 ```
-When this code is executed, the ```en.requestString("",console.log,te.untilMilli(100))``` enters the request on the engine queue, then ```en.terminate()``` is put in the queue. It is only at a later time that ```then(...)``` is exrcuted and the conditonal request is put on the queue (behind the ```en.terminate()``` ) . As  result, the engine will be terminated before the contingent request is executed. In general **once  a promise chain is started, all subsequent engine command need to be added to the chain***
+When this code is executed, the ```en.requestString("",console.log,te.untilMilli(100))``` enters the request on the engine queue, then ```en.terminate()``` is put in the queue. It is only at a later time that ```then(...)``` is executed and the conditonal request is put on the queue (behind the ```en.terminate()``` ) . As  result, the engine will be terminated before the contingent request is executed. 
+
+In general **once a promise chain is started, all subsequent engine command needs to be added to the chain***
+
+####  Third easy error
+
+Not returning a Promise in the body of a **then()**  can be an error. It is important to remember that when the body of a **then()** returns a **Promise**, execution waits for the resolution of this **Promise** before moving to the next step. Also, if the returned promise is **rejected**, the rejection can be caught by a **catch()**.
+```
+en.requestString("",te.untilMilli(100))
+    .then(()=>{if(temp % 2 == 0){return en.requestString("MIA",te.untilMilli(100))}  // <--- LOOK HERE
+        else {return en.requestString("BOS",te.untilMilli(100))}})             // <--- AND HERE
+    .catch(()=>{console.log("Something went wrong")})
+    .finally(()=>{en.terminate();console.log("The temperature in NYC is",temp,"F")})
+```
+If the **return** had been omitted, the code would still execute:  the **request** would be put on the queue; the **then()** would resolve immeditately and the execution would move to **finally()** , which would put the **terminate** command in the queue behind the **request**  command. The **catch()** would never be executed. 
+
+However, the behavior is different when the **return**  is present. Now the **then()**  only resolves when the **request**  command is resolved. If it fails, the **catch()** is executed. And then only the  **finally()**  is executed.  It would make a big difference is data from the **request**  was used in the body for the **finally()**  or in any subsequent step in the chain. 
+
+Make sure to return the Promise generated by an Engine method within a  **then()**  if the intent is to catch an error in the execution of the command or to wait for its resolution before moving to the next step in the chain. 
+
 
 ## Proxies
 
@@ -611,11 +647,11 @@ The call back can be disabled with the method ```df.terminate()``` of the return
 
 ## ```en.terminate()```
 
-This is the soft termination method  of an **Engine**. It closes the socket to the telnet server and disables all callbacks. This methods is queue by the Engine; so all pending commands are completed first. 
+This is the soft termination method of an **Engine**. It closes the socket to the telnet server and disables all call-backs. This method is queued by the Engine; so all pending commands are completed first. 
 
 ## ```en.detroy()```
 
-This is the hard termination method  of an **Engine**.  It immediatly closes the socket to the telnet server and disables all callbacks. This methods is the synchronous version of ```en.terminate()```. 
+This is the hard termination method of an **Engine**.  It immediately closes the socket to the telnet server and disables all call-backs. This method is the synchronous version of ```en.terminate()```. 
 
 ## ```en.listenString(foo,UID)```
 
@@ -628,13 +664,13 @@ Establishes a call back to **foo** every time a line of text is received from th
 | **UID**|Object/String/Number|undefined| Optional tag indentifying a specific Request. If provided, only the corresponding response lines will be processed by **foo**
 | ***return value***| Defer|| object from the npm module repeat-promise
 
-The callback can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listenString** (See **Defer** and **Cycle** documentation for more details).  The call-back is automatically disablef when the **Engine** is terminated.
+The call-back can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listenString** (See **Defer** and **Cycle** documentation for more details).  The call-back is automatically disabled when the **Engine** is terminated.
 
-Note that  **listenString**  is not placed in the Engine queue and that the call-backs to **foo** are  not synchronised  with the execution of the queue.  As a result, a program should not rely on the order of appearance of **listenString**   in the program with respect to other Engine methods.
+Note that  **listenString**  is not placed in the Engine queue and that the call-backs to **foo** are not synchronized with the execution of the queue.  As a result, a program should not rely on the order of appearance of **listenString**   in the program with respect to other Engine methods.
 
 ## ```en.listen(foo)```
 
-This is an object version ```en.listenString(foo,UID)```.  It establishes a call back to **foo** every time a line of text is received from the server but the line is provided as an object.
+This is an object version ```en.listenString(foo,UID)```.  It establishes a call back to **foo** every time a line of text is received from the server, but the line is provided as an object.
 
 | Parameter| Type | Default   |  |
 | ------------- |---- |------|------
@@ -642,16 +678,16 @@ This is an object version ```en.listenString(foo,UID)```.  It establishes a call
 | **foo** |```(obj)=>{...}``` |n/a|Function called with each incoming line of text *
 | ***return value***| Defer|| object from the npm module repeat-promise
 
-The object **obj** is passed to the callback function **foo**. See the description of the method  ```Request()```for the details of the object properties.
+The object **obj** is passed to the call-back function **foo**. See the description of the method  ```Request()```for the details of the object properties.
 
-The callback can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listen** (See **Defer** and **Cycle** documentation for more details). The call-back is automatically disabled when the **Engine** is terminated.
+The call-back can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listen** (See **Defer** and **Cycle** documentation for more details). The call-back is automatically disabled when the **Engine** is terminated.
 
-Note that  **listen**  is not placed in the Engine queue and that the call-backs to **foo** are  not synchronised  with the execution of the queue.  As a result, a program should not rely on the order of appearance of **listen**   in the program with respect to other Engine methods.
+Note that  **listen**  is not placed in the Engine queue and that the call-backs to **foo** are not synchronized with the execution of the queue.  As a result, a program should not rely on the order of appearance of **listen**   in the program with respect to other Engine methods.
 
 
 ## ```en.echoString(foo)```
 
-Establishes a call back to **foo** every time a line of text is sent tothe server.
+Establishes a call back to **foo** every time a line of text is sent to the server.
 
 | Parameter| Type | Default   |  |
 | ------------- |---- |------|------
@@ -659,13 +695,13 @@ Establishes a call back to **foo** every time a line of text is sent tothe serve
 | **foo** |```(s)=>{...}``` |n/a|Function called with each outgoing line of text 
 | ***return value***| Defer|| object from the npm module repeat-promise
 
-The callback can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listen** (See **Defer** and **Cycle** documentation for more details). The call-back is automatically disabled when the **Engine** is terminated.
+The call-back can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listen** (See **Defer** and **Cycle** documentation for more details). The call-back is automatically disabled when the **Engine** is terminated.
 
-Note that  **echoString**  is not placed in the Engine queue and that the call-backs to **foo** are  not synchronised  with the execution of the queue.  As a result, a program should not rely on the order of appearance of **echoString**   in the program with respect to other Engine methods.
+Note that  **echoString**  is not placed in the Engine queue and that the call-backs to **foo** are not synchronized with the execution of the queue.  As a result, a program should not rely on the order of appearance of **echoString**   in the program with respect to other Engine methods.
 
 ## ```en.echo(foo)```
 
-This is an object version ```en.echoString(foo)```.  It establishes a call back to **foo** every time a line of text is sent from the server but the line is provided as an object.
+This is an object version ```en.echoString(foo)```.  It establishes a call back to **foo** every time a line of text is sent from the server, but the line is provided as an object.
 
 | Parameter| Type | Default   |  |
 | ------------- |---- |------|------
@@ -680,14 +716,14 @@ The object **obj** has the following properties:
 | **request**|String  |Line of text sent to the server
 | **UID**| Object/String/Number|Object, string or number identifying the request to the server
 
-The callback can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listen** (See **Defer** and **Cycle** documentation for more details). The call-back is automatically disabled when the **Engine** is terminated.
+The call-back can be disabled by calling the **df.terminate()** method of the **Defer** object returned by **listen** (See **Defer** and **Cycle** documentation for more details). The call-back is automatically disabled when the **Engine** is terminated.
 
-Note that  **echo**  is not placed in the Engine queue and that the call-backs to **foo** are  not synchronised  with the execution of the queue.  As a result, a program should not rely on the order of appearance of **echo**   in the program with respect to other Engine methods.
+Note that  **echo**  is not placed in the Engine queue and that the call-backs to **foo** are not synchronized with the execution of the queue.  As a result, a program should not rely on the order of appearance of **echo**   in the program with respect to other Engine methods.
 
 
 ## ```en.requestString(text,test,foo,UID)```
 
-The asynchronous method  ```en.requestString() ``` works by placing a  command to send one line of text on the Engine queue and hten wait for it is execution and for a complete response from the server. 
+The asynchronous method  ```en.requestString() ``` works by placing a  command to send one line of text on the Engine queue and then wait for it is execution and for a complete response from the server. 
 
 | Parameter| Type | Default   |  |
 | ------------- |---- |------|------
@@ -700,7 +736,7 @@ The asynchronous method  ```en.requestString() ``` works by placing a  command t
 
 All the parameters are optional.
 
-If **request**  is  **undefined**, no text will be sent but the incoming text will be processed. 
+If **request**  is  **undefined**, no text will be sent, but the incoming text will be processed. 
 
 In general, there is no need to write a custom test function; the module provides a set of test function generators that cover most of the use cases. 
 
@@ -710,7 +746,7 @@ The **request()** method returns a Promise that resolves when the response is co
 
 ### Test function generators
 
-The following test function generators are includes on the module. Generators are functions that return a custom test function based on the input parameter; they take care of the implementation details.  It is the test function that needs to be passed to the request, not the generator. 
+The following test function generators are includes in the module. Generators are functions that return a custom test function based on the input parameter; they take care of the implementation details.  It is the test function that needs to be passed to the request, not the generator. 
 
 | Generator| Use 
 | ------------- |----
@@ -732,15 +768,15 @@ Such a function needs to be in the form: ```(s,fun,obj) =>{...}```
 Parameter| Type | |  
 | ------------- |---- |------
 |**s**|String|A line of text received
-| **fun** |Function|A function provided by the engine, which should be called if the last line of text is detected 
+| **fun** |Function|A function provided by the Engine, which should be called if the last line of text is detected 
 | **obj** |Object|A "context" object that is passed (the same object) to every call related to one specific request. The test function can use the properties of this object to store data between calls if needed. A fresh object is created with every new request. 
 
-For more details, look at the implementation of the generators in the source available on Github
+For more details, look at the implementation of the generators in the source available on Github.
 
 ## ```en.request(req)```
 
 
-This is an object version of ```en.requestString() ```, it takes and returns lines of a response as objects. Thsi version allows for a more detailed processing of reponses.
+This is an object version of ```en.requestString() ```, it takes and returns lines of a response as objects. This version allows for finer processing of responses.
 
 
 | Parameter| Type | Default   |  |
@@ -754,10 +790,10 @@ This is an object version of ```en.requestString() ```, it takes and returns lin
 var te = require("telnet-engine")
 var en = new te.Engine("rainmaker.wunderground.com",23)
 en.request({request: "", test:te.untilMilli(100), 
-		foo: (obj)=>{return obj.response.length}, 
-		UID: "REQ123"} )
-	.then(console.log)
-	.catch(()=>{console.log("error:","REQ123")})
+        foo: (obj)=>{return obj.response.length}, 
+        UID: "REQ123"} )
+    .then(console.log)
+    .catch(()=>{console.log("error:","REQ123")})
 ```
 ###  Output
 ``` 
@@ -781,7 +817,7 @@ The expected properties of the **req** object are similar to the parameters of `
 
 ### Output object properties
 
-The information the returned objects carry is more detailed that that available from ```en.requestString() ```
+The information the returned objects carry is more detailed than that available from ```en.requestString() ```
 
 | Properties| Type   | |
 | ------------- |---- |----
@@ -795,15 +831,15 @@ The information the returned objects carry is more detailed that that available 
 | **delayed**|**undefined**/**true**|Indicates it is an extra object with no text content  generated by the end of response timer in the case of ```te.untilMilli(t)```. 
 | **fail**|**undefined**/**true**|**true** fi the request timed out 
 
-The same output objects are send to the call-back function of ```en.listen(foo)``` 
+The same output objects are sent to the call-back function of ```en.listen(foo)``` 
 
-There is one small complexity when the test function is generated by  ```te.untilMilli(t)``` . The **Engine** has to wait after the last line of text to determine that the response is completely. Consequently, the object corresponding to the last line of text doesn't have its **end** property set to **true**. However, one extra object is generated up detection of the end, this object has no **response** property but it has its **end** property set to **true**. It also has a **delayed** property set to **true** indicating it is a delayed end of response. The call-back functions of```en.request() ``` and  ```en.listen()```  both receive this extra object however it is not included in the array passed by the resolved promise of ```en.request() ``` .
+There is one small complexity when the test function is generated by  ```te.untilMilli(t)```. The **Engine** has to wait after the last line of text to determine that the response is complete. Consequently, the object corresponding to the last line of text doesn't have its **end** property set to **true**. However, one extra object is generated upon detection of the end, this object has no **response** property, but it has its **end** property set to **true**. It also has a **delayed** property set to **true**, indicating it is a delayed end of response. The call-back functions of```en.request() ``` and  ```en.listen()```  both receive this extra object however it is not included in the array passed by the resolved promise of ```en.request() ``` .
 
 
 
 ## ```en.proxy()```
 
-The **Proxy ()** method creates a copy of the **Engine** or a copy of another **Proxy**.  The creation of the **Proxy** freezes the queue of the parent **Engine** or **Proxy** thus gaining exclusive access to the websocket. 
+The **Proxy ()** method creates a copy of the **Engine** or a copy of another **Proxy**.  The creation of the **Proxy** freezes the queue of the parent ** Engine** or **Proxy**, thus gaining exclusive access to the websocket. 
 
 
 | Method| Return Type | |  
@@ -816,11 +852,11 @@ The start, freezing or restart of the queue of the parent or of the child is alw
 
 A **Proxy** exposes all the same methods as an **Engine** except ```terminate()``` and  ```destroy()```, which are not available on the **Proxie**s. 
 
-Changes to the **Engine** properties thru the **Proxy** properties are possible and these changes are reverted when the **Proxy** is released. 
+Changes to the **Engine** properties through the **Proxy** properties are possible, and these changes are reverted when the **Proxy** is released. 
 
 ## ```en.wait(t)```
 
-Stops the execution queue of the **Engine** for t milliseconds.  This command is queued so all previously queued commands are executed first. The method returns a **Promise** that is resolved when the queue restarts.  
+Stops the execution queue of the **Engine** for t milliseconds.  This command is queued, so all previously queued commands are executed first. The method returns a **Promise** that is resolved when the queue restarts.  
 
 
 ## ```en.do(foo)```
