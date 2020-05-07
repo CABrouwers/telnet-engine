@@ -560,6 +560,15 @@ function Engine(host, port, predecessor) {
         return new Engine(null, null, { lock: lock, sema: sema, engine: myEngine })
     }
 
+
+    this.onConnecting = myEngine.onConnecting
+    this.onConnectionSuccess = myEngine.onConnectionSuccess
+    this.onConnectionTimeOut = myEngine.onConnectionTimeOut
+    this.onConnectionError = myEngine.onConnectionError
+    this.onConnectionEnd = myEngine.onConnectionEnd
+    this.onResponseTimeOut = myEngine.onResponseTimeOut
+    this.onReceive = myEngine.onReceive
+
     Object.defineProperty(this, 'inDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'inDelimiter'))
     Object.defineProperty(this, 'outDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'outDelimiter'))
     Object.defineProperty(this, 'timeOut', Object.getOwnPropertyDescriptor(myEngine, 'timeOut'))
