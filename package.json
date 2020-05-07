@@ -1,6 +1,6 @@
 {
   "name": "telnet-engine",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "\"node.js interface to Telnet device,",
   "main": "index.js",
   "scripts": {
@@ -23,6 +23,6 @@
   "homepage": "https://github.com/CABrouwers/telnet-engine#readme",
   "dependencies": {
     "net": "^1.0.2",
-    "repeatable-promise": "^1.5.5"
+    "repeatable-promise": "^1.8.5"
   }
 }

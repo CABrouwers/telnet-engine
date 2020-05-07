@@ -137,18 +137,18 @@ function inEngine(host, port) {
     }
 
 
-    onOpenConnectionConnecting = new rp.Cycle();
-    onOpenConnectionSuccess = new rp.Cycle();
-    onOpenConnectionTimeOut = new rp.Cycle();
+    onConnecting = new rp.Cycle();
+    onConnectionSuccess = new rp.Cycle();
+    onConnectionTimeOut = new rp.Cycle();
     onConnectionError = new rp.Cycle();
     onConnectionEnd = new rp.Cycle();
     onResponseTimeOut = new rp.Cycle();
     onReceive = new rp.Cycle();
 
 
-    this.onOpenConnectionConnecting = (f) => { return onOpenConnectionConnecting.thenAgain(f) }
-    this.onOpenConnectionSuccess = (f) => { return onOpenConnectionSuccess.thenAgain(f) }
-    this.onOpenConnectionTimeOut = (f) => { return onOpenConnectionTimeOut.thenAgain(f) }
+    this.onConnecting = (f) => { return onConnecting.thenAgain(f) }
+    this.onConnectionSuccess = (f) => { return onConnectionSuccess.thenAgain(f) }
+    this.onConnectionTimeOut = (f) => { return onConnectionTimeOut.thenAgain(f) }
     this.onConnectionError = (f) => { return onConnectionError.thenAgain(f) }
     this.onConnectionEnd = (f) => { return onConnectionEnd.thenAgain(f) }
     this.onResponseTimeOut = (f) => { return onResponseTimeOut.thenAgain(f) }
@@ -168,11 +168,11 @@ function inEngine(host, port) {
                     return;
                 }
 
-                onOpenConnectionConnecting.repeat()
+                onConnecting.repeat()
 
                 var timeOutTimer = setTimeout(function () {
                     client.destroy()
-                    onOpenConnectionTimeOut.repeat()
+                    onConnectionTimeOut.repeat()
                     resolve();
                 }, timeOut)
 
@@ -181,7 +181,7 @@ function inEngine(host, port) {
                 },
                     function () {
                         clearTimeout(timeOutTimer)
-                        onOpenConnectionSuccess.repeat()
+                        onConnectionSuccess.repeat()
                         if (flushFlag) {
                             var flushDelay = new rp.Delay(flushFlag)
                             flushDelay.then(() => { resolve(); flushFlag = false })
@@ -420,9 +420,9 @@ function inEngine(host, port) {
     this.destroy = () => {
         broadcaster.terminate()
         client.destroy()
-        onOpenConnectionConnecting.terminate()
-        onOpenConnectionSuccess.terminate()
-        onOpenConnectionTimeOut.terminate()
+        onConnecting.terminate()
+        onConnectionSuccess.terminate()
+        onConnectionTimeOut.terminate()
         onConnectionError.terminate()
         onConnectionEnd.terminate()
         onReceive.terminate()
@@ -653,4 +653,5 @@ module.exports = {
     untilPrompt,
     oneLine,
     noResponse,
+    untilTrue
 }
