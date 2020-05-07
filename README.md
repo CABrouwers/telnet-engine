@@ -628,9 +628,9 @@ The following methods establish a call back to a function **foo** every time a s
 
 | Event|Type|
 | ------------- |--------------|
-|```en.onOpenConnectionConnecting(foo)```|foo is executed every time the engine attempts to open the connection|  
-|```en.onOpenConnectionSuccess(foo)```    |foo is executed every time the connection is successfully opened| 
-|```en.onOpenConnectionTimeOut(foo)```    |foo is executed if the connection is not established before time out. | 
+|```en.onConnecting(foo)```|foo is executed every time the engine attempts to open the connection|  
+|```en.onConnectionSuccess(foo)```    |foo is executed every time the connection is successfully opened| 
+|```en.onConnectionTimeOut(foo)```    |foo is executed if the connection is not established before time out. | 
 | ```en.onConnectionError(foo)```    |foo is executed if some other error occurs| 
 |  ```en.onConnectionEnd(foo)```        |foo is executed when the engine closes the connection| 
 |  ```en.onResponseTimeOut (foo)```    |foo is executed if a request to the server times out| 
