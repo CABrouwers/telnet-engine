@@ -595,7 +595,7 @@ function untilString(endstring) {
 }
 
 
-function untilRegEx(endRegExp) {
+function untilRegExp(endRegExp) {
     return (s, f) => {
         if (endRegExp.test(s)) { f() }
     }
@@ -656,7 +656,7 @@ function noResponse() {
 module.exports = {
     Engine,
     untilString,
-    untilRegEx,
+    untilRegExp,
     untilNumLines,
     untilMilli,
     untilPrompt,

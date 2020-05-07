@@ -111,7 +111,7 @@ The following test function generators are included in the module. Generators ar
 | Generator| Use 
 | ------------- |----
 |```te.untilString(s)```    |        The last line of the response contains the string s
-|```te.untilRegEx(r)```    |        The last line of the response contains the regular expression r
+|```te.untilRegExp(r)```    |        The last line of the response contains the regular expression r
 |```untilPrompt(s)```    |          Until the prompt **s** appears in an unterminated response line
 |```te.untilNumLines(n)```|        The response contains n lines
 |```te.untilMilli(t)```    |        The reponse is complete if no more text is received after a pause of t milliseconds. 
@@ -751,7 +751,7 @@ The following test function generators are includes in the module. Generators ar
 | Generator| Use 
 | ------------- |----
 |```te.untilString(s)```    |        The last line of the response contains the string s
-|```te.untilRegEx(r)```    |        The last line of the response contains the regular expression r
+|```te.untilRegExp(r)```    |        The last line of the response contains the regular expression r
 |```untilPrompt(s)```    |          Until the prompt **s** appears in an unterminated response
 |```te.untilNumLines(n)```|        The response contains n lines
 |```te.untilMilli(t)```    |        The reponse is complete if no message has been received in the last t milliseconds. 
