@@ -158,6 +158,7 @@ function inEngine(host, port) {
     var lineBreakTimer = rp.Delay(0)
     lineBreakTimer.clear = true
 
+    const rawReceiver = new Cycle()
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -193,6 +194,7 @@ function inEngine(host, port) {
 
                 client.on('data', function (chunk) {
                     let data = chunk.toString()
+                    rawReceiver.repeat(data)
                     if (autoLineBreak) {
                         if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
                         else {
@@ -465,6 +467,8 @@ function inEngine(host, port) {
 
 
     this.flush = (t = 1000) => { return this.requestString(null, untilMilli(t)) }
+
+    this.rawListen = (f) => { return rawReceiver.thenAgain(f) }
 }
 
 
@@ -560,6 +564,8 @@ function Engine(host, port, predecessor) {
         return new Engine(null, null, { lock: lock, sema: sema, engine: myEngine })
     }
 
+
+    this.rawListen = myEngine.rawListen 
 
     this.onConnecting = myEngine.onConnecting
     this.onConnectionSuccess = myEngine.onConnectionSuccess

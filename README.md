@@ -655,7 +655,7 @@ This is the hard termination method of an **Engine**.  It immediately closes the
 
 ## ```en.listenString(foo,UID)```
 
-Establishes a call back to **foo** every time a line of text is received from the server.
+Establishes a call back to **foo** with each line of text received from the server as argument (or every line carrying the tag UID).
 
 | Parameter| Type | Default   |  |
 | ------------- |---- |------|------
@@ -670,7 +670,7 @@ Note that  **listenString**  is not placed in the Engine queue and that the call
 
 ## ```en.listen(foo)```
 
-This is an object version ```en.listenString(foo,UID)```.  It establishes a call back to **foo** every time a line of text is received from the server, but the line is provided as an object.
+This is an object version ```en.listenString(foo,UID)```. Establishes a call back to **foo** with each line of text received from the server as argument (or every line carrying the tag UID). The line is provided as an object.
 
 | Parameter| Type | Default   |  |
 | ------------- |---- |------|------
