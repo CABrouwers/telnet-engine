@@ -5,9 +5,6 @@ function makeEnding(reg) {
     return new RegExp("(" + reg.source + ")$");
 }
 
-function makeStarting(reg) {
-    return new RegExp("^(" + reg.source + ")");
-}
 
 
 function RegExize(x) {
@@ -137,18 +134,18 @@ function inEngine(host, port) {
     }
 
 
-    onOpenConnectionConnecting = new rp.Cycle();
-    onOpenConnectionSuccess = new rp.Cycle();
-    onOpenConnectionTimeOut = new rp.Cycle();
+    onConnecting = new rp.Cycle();
+    onConnectionSuccess = new rp.Cycle();
+    onConnectionTimeOut = new rp.Cycle();
     onConnectionError = new rp.Cycle();
     onConnectionEnd = new rp.Cycle();
     onResponseTimeOut = new rp.Cycle();
     onReceive = new rp.Cycle();
 
 
-    this.onOpenConnectionConnecting = (f) => { return onOpenConnectionConnecting.thenAgain(f) }
-    this.onOpenConnectionSuccess = (f) => { return onOpenConnectionSuccess.thenAgain(f) }
-    this.onOpenConnectionTimeOut = (f) => { return onOpenConnectionTimeOut.thenAgain(f) }
+    this.onConnecting = (f) => { return onConnecting.thenAgain(f) }
+    this.onConnectionSuccess = (f) => { return onConnectionSuccess.thenAgain(f) }
+    this.onConnectionTimeOut = (f) => { return onConnectionTimeOut.thenAgain(f) }
     this.onConnectionError = (f) => { return onConnectionError.thenAgain(f) }
     this.onConnectionEnd = (f) => { return onConnectionEnd.thenAgain(f) }
     this.onResponseTimeOut = (f) => { return onResponseTimeOut.thenAgain(f) }
@@ -158,6 +155,7 @@ function inEngine(host, port) {
     var lineBreakTimer = rp.Delay(0)
     lineBreakTimer.clear = true
 
+    const rawReceiver = new rp.Cycle()
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -167,21 +165,35 @@ function inEngine(host, port) {
                     resolve();
                     return;
                 }
+                console.debug("reopening")
+                onConnecting.repeat()
 
-                onOpenConnectionConnecting.repeat()
 
-                var timeOutTimer = setTimeout(function () {
-                    client.destroy()
-                    onOpenConnectionTimeOut.repeat()
-                    resolve();
-                }, timeOut)
+                var outTimer = new rp.TimeOut(timeOut)
 
-                client = net.createConnection({
-                    port: port, host: host
-                },
+                outTimer
+                    .then(() => {
+                        console.debug("success")
+                    })
+                    .catch(() => {
+                        console.debug("failed")
+                        client.destroy()
+                        console.debug("client.destroy() 2")
+                        onConnectionTimeOut.repeat()
+                        fail();
+                    })
+
+                //                var timeOutTimer = setTimeout(function () {
+                //                    client.destroy()
+                //                    onConnectionTimeOut.repeat()
+                //                 fail();
+                //                }, timeOut)
+
+                client = net.createConnection({ port: port, host: host },
                     function () {
-                        clearTimeout(timeOutTimer)
-                        onOpenConnectionSuccess.repeat()
+                        console.debug("ici")
+                        outTimer.resolve()
+                        onConnectionSuccess.repeat()
                         if (flushFlag) {
                             var flushDelay = new rp.Delay(flushFlag)
                             flushDelay.then(() => { resolve(); flushFlag = false })
@@ -193,6 +205,7 @@ function inEngine(host, port) {
 
                 client.on('data', function (chunk) {
                     let data = chunk.toString()
+                    rawReceiver.repeat(data)
                     if (autoLineBreak) {
                         if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
                         else {
@@ -216,7 +229,7 @@ function inEngine(host, port) {
 
             catch (e) {
                 onConnectionError.repeat()
-                resolve()
+                fail()
             }
 
         })
@@ -267,16 +280,16 @@ function inEngine(host, port) {
     var sendQueue = new rp.Queue()
 
     const send_receive = (text, foo, test, UID, prompt) => {
-        var prom = new rp.Defer()
+        responseRelease = new rp.Defer()
         sendQueue.enQueue(() => {
-            reOpenConnection()
+            return reOpenConnection()
                 .then(() => {
                     if (typeof text == "function" || text instanceof Function) { text = text() }
                     if (text || text == "") { return sendLine(text, responseUID) }
                 })
                 .then(() => {
                     if (test == noRespObj) {
-                        prom.resolve();
+                        responseRelease.resolve([]);
                         var interResponse = { end: true };
                         if (responseUID) { interResponse.UID = responseUID }
                         if (responseRequest || responseRequest == "") { interResponse.request = responseRequest }
@@ -290,46 +303,48 @@ function inEngine(host, port) {
                     responseDelayed = test ? test.delayed : false
                     responseUID = UID
                     responsePrompt = prompt
-                    responseRelease = prom
                     responseTimeout = new rp.Delay(timeOut)
                     if (!responseDelayed) {
                         responseTimeout.then(() => {
                             responseRelease.fail(responseArray);
                             onResponseTimeOut.repeat()
                         })
-                        .catch(() => { })
+                            .catch(() => { })
                     }
-                    responseRelease
-                        .then(responseTimeout.fail)
-                        .catch(() => {
-                            var response = { fail: true }
-                            if (responseRequest) { response.request = responseRequest }
-                            if (UID) { response.UID = UID }
-                            broadcast(response)
-                        })
-                        .finally(() => {
-                            responseExpected = false
-                            responseUID = undefined
-                            responseTest = undefined
-                            responseRelease = undefined
-                            responsePrompt = undefined
-                            responseFoo = undefined
-                            responseTimeout = undefined
-                            responseCounter = undefined
-                            responseRequest = undefined
-                            responseArray = []
-                        })
                     responseExpected = true
                     treat()
-                }, prom.fail)
+                })
+                .catch(() => {
+                    responseRelease.fail(responseArray)
+                })
         })
 
-        sendQueue.enQueue(prom).catch(() => {
-            var response = { fail: true }
-            if (UID) { response.UID = UID }
-            broadcast(response)
-        })
-        return prom
+
+        responseRelease
+            .then(() => {
+                responseTimeout.fail()
+            })
+            .catch(() => {
+                var response = { fail: true }
+                if (responseRequest) { response.request = responseRequest }
+                if (UID) { response.UID = UID }
+                broadcast(response)
+            })
+            .finally(() => {
+                responseExpected = false
+                responseUID = undefined
+                responseTest = undefined
+                responseRelease = undefined
+                responsePrompt = undefined
+                responseFoo = undefined
+                responseTimeout = undefined
+                responseCounter = undefined
+                responseRequest = undefined
+                responseArray = []
+            })
+
+
+        return responseRelease
 
     }
 
@@ -397,7 +412,7 @@ function inEngine(host, port) {
     }
 
     const broadcaster = new rp.Cycle()
-    var broadcastQueue = Promise.resolve()
+    //var broadcastQueue = Promise.resolve()
     function broadcast(line) {
         broadcastQueue = broadcaster.repeat(line)
     }
@@ -419,10 +434,12 @@ function inEngine(host, port) {
 
     this.destroy = () => {
         broadcaster.terminate()
+        rawReceiver.terminate()
         client.destroy()
-        onOpenConnectionConnecting.terminate()
-        onOpenConnectionSuccess.terminate()
-        onOpenConnectionTimeOut.terminate()
+        console.debug("client.destroy() 1")
+        onConnecting.terminate()
+        onConnectionSuccess.terminate()
+        onConnectionTimeOut.terminate()
         onConnectionError.terminate()
         onConnectionEnd.terminate()
         onReceive.terminate()
@@ -464,7 +481,9 @@ function inEngine(host, port) {
     }
 
 
-    this.flush = (t = 1000) => { return this.requestString(null, untilMilli(t)) }
+    this.flush = (t = 100) => { return this.requestString(null, untilMilli(t)) }
+
+    this.rawListen = (f) => { return rawReceiver.thenAgain(f) }
 }
 
 
@@ -520,7 +539,7 @@ function Engine(host, port, predecessor) {
 
     this.echoString = (foo) => { return myEngine.echoString(foo) }
 
-    this.flush = (t = 1000) => { return commandQueue.enQueue(() => { return myEngine.flush(t) }) }
+    this.flush = (t = 100) => { return commandQueue.enQueue(() => { return myEngine.flush(t) }) }
 
     this.do = (f) => {
         return commandQueue.enQueue(f)
@@ -560,6 +579,17 @@ function Engine(host, port, predecessor) {
         return new Engine(null, null, { lock: lock, sema: sema, engine: myEngine })
     }
 
+
+    this.rawListen = myEngine.rawListen
+
+    this.onConnecting = myEngine.onConnecting
+    this.onConnectionSuccess = myEngine.onConnectionSuccess
+    this.onConnectionTimeOut = myEngine.onConnectionTimeOut
+    this.onConnectionError = myEngine.onConnectionError
+    this.onConnectionEnd = myEngine.onConnectionEnd
+    this.onResponseTimeOut = myEngine.onResponseTimeOut
+    this.onReceive = myEngine.onReceive
+
     Object.defineProperty(this, 'inDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'inDelimiter'))
     Object.defineProperty(this, 'outDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'outDelimiter'))
     Object.defineProperty(this, 'timeOut', Object.getOwnPropertyDescriptor(myEngine, 'timeOut'))
@@ -586,7 +616,7 @@ function untilString(endstring) {
 }
 
 
-function untilRegEx(endRegExp) {
+function untilRegExp(endRegExp) {
     return (s, f) => {
         if (endRegExp.test(s)) { f() }
     }
@@ -647,10 +677,11 @@ function noResponse() {
 module.exports = {
     Engine,
     untilString,
-    untilRegEx,
+    untilRegExp,
     untilNumLines,
     untilMilli,
     untilPrompt,
     oneLine,
     noResponse,
+    untilTrue
 }
