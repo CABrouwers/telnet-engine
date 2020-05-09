@@ -165,33 +165,20 @@ function inEngine(host, port) {
                     resolve();
                     return;
                 }
-                console.debug("reopening")
                 onConnecting.repeat()
 
 
                 var outTimer = new rp.TimeOut(timeOut)
 
                 outTimer
-                    .then(() => {
-                        console.debug("success")
-                    })
                     .catch(() => {
-                        console.debug("failed")
                         client.destroy()
-                        console.debug("client.destroy() 2")
                         onConnectionTimeOut.repeat()
                         fail();
                     })
 
-                //                var timeOutTimer = setTimeout(function () {
-                //                    client.destroy()
-                //                    onConnectionTimeOut.repeat()
-                //                 fail();
-                //                }, timeOut)
-
                 client = net.createConnection({ port: port, host: host },
                     function () {
-                        console.debug("ici")
                         outTimer.resolve()
                         onConnectionSuccess.repeat()
                         if (flushFlag) {
@@ -412,7 +399,7 @@ function inEngine(host, port) {
     }
 
     const broadcaster = new rp.Cycle()
-    //var broadcastQueue = Promise.resolve()
+
     function broadcast(line) {
         broadcastQueue = broadcaster.repeat(line)
     }
@@ -436,7 +423,6 @@ function inEngine(host, port) {
         broadcaster.terminate()
         rawReceiver.terminate()
         client.destroy()
-        console.debug("client.destroy() 1")
         onConnecting.terminate()
         onConnectionSuccess.terminate()
         onConnectionTimeOut.terminate()
