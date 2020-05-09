@@ -137,18 +137,18 @@ function inEngine(host, port) {
     }
 
 
-    onConnecting = new rp.Cycle();
-    onConnectionSuccess = new rp.Cycle();
-    onConnectionTimeOut = new rp.Cycle();
+    onOpenConnectionConnecting = new rp.Cycle();
+    onOpenConnectionSuccess = new rp.Cycle();
+    onOpenConnectionTimeOut = new rp.Cycle();
     onConnectionError = new rp.Cycle();
     onConnectionEnd = new rp.Cycle();
     onResponseTimeOut = new rp.Cycle();
     onReceive = new rp.Cycle();
 
 
-    this.onConnecting = (f) => { return onConnecting.thenAgain(f) }
-    this.onConnectionSuccess = (f) => { return onConnectionSuccess.thenAgain(f) }
-    this.onConnectionTimeOut = (f) => { return onConnectionTimeOut.thenAgain(f) }
+    this.onOpenConnectionConnecting = (f) => { return onOpenConnectionConnecting.thenAgain(f) }
+    this.onOpenConnectionSuccess = (f) => { return onOpenConnectionSuccess.thenAgain(f) }
+    this.onOpenConnectionTimeOut = (f) => { return onOpenConnectionTimeOut.thenAgain(f) }
     this.onConnectionError = (f) => { return onConnectionError.thenAgain(f) }
     this.onConnectionEnd = (f) => { return onConnectionEnd.thenAgain(f) }
     this.onResponseTimeOut = (f) => { return onResponseTimeOut.thenAgain(f) }
@@ -158,7 +158,6 @@ function inEngine(host, port) {
     var lineBreakTimer = rp.Delay(0)
     lineBreakTimer.clear = true
 
-    const rawReceiver = new rp.Cycle()
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -169,11 +168,11 @@ function inEngine(host, port) {
                     return;
                 }
 
-                onConnecting.repeat()
+                onOpenConnectionConnecting.repeat()
 
                 var timeOutTimer = setTimeout(function () {
                     client.destroy()
-                    onConnectionTimeOut.repeat()
+                    onOpenConnectionTimeOut.repeat()
                     resolve();
                 }, timeOut)
 
@@ -182,7 +181,7 @@ function inEngine(host, port) {
                 },
                     function () {
                         clearTimeout(timeOutTimer)
-                        onConnectionSuccess.repeat()
+                        onOpenConnectionSuccess.repeat()
                         if (flushFlag) {
                             var flushDelay = new rp.Delay(flushFlag)
                             flushDelay.then(() => { resolve(); flushFlag = false })
@@ -194,7 +193,6 @@ function inEngine(host, port) {
 
                 client.on('data', function (chunk) {
                     let data = chunk.toString()
-                    rawReceiver.repeat(data)
                     if (autoLineBreak) {
                         if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
                         else {
@@ -299,7 +297,7 @@ function inEngine(host, port) {
                             responseRelease.fail(responseArray);
                             onResponseTimeOut.repeat()
                         })
-                            .catch(() => { })
+                        .catch(() => { })
                     }
                     responseRelease
                         .then(responseTimeout.fail)
@@ -422,9 +420,9 @@ function inEngine(host, port) {
     this.destroy = () => {
         broadcaster.terminate()
         client.destroy()
-        onConnecting.terminate()
-        onConnectionSuccess.terminate()
-        onConnectionTimeOut.terminate()
+        onOpenConnectionConnecting.terminate()
+        onOpenConnectionSuccess.terminate()
+        onOpenConnectionTimeOut.terminate()
         onConnectionError.terminate()
         onConnectionEnd.terminate()
         onReceive.terminate()
@@ -467,8 +465,6 @@ function inEngine(host, port) {
 
 
     this.flush = (t = 1000) => { return this.requestString(null, untilMilli(t)) }
-
-    this.rawListen = (f) => { return rawReceiver.thenAgain(f) }
 }
 
 
@@ -564,17 +560,6 @@ function Engine(host, port, predecessor) {
         return new Engine(null, null, { lock: lock, sema: sema, engine: myEngine })
     }
 
-
-    this.rawListen = myEngine.rawListen 
-
-    this.onConnecting = myEngine.onConnecting
-    this.onConnectionSuccess = myEngine.onConnectionSuccess
-    this.onConnectionTimeOut = myEngine.onConnectionTimeOut
-    this.onConnectionError = myEngine.onConnectionError
-    this.onConnectionEnd = myEngine.onConnectionEnd
-    this.onResponseTimeOut = myEngine.onResponseTimeOut
-    this.onReceive = myEngine.onReceive
-
     Object.defineProperty(this, 'inDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'inDelimiter'))
     Object.defineProperty(this, 'outDelimiter', Object.getOwnPropertyDescriptor(myEngine, 'outDelimiter'))
     Object.defineProperty(this, 'timeOut', Object.getOwnPropertyDescriptor(myEngine, 'timeOut'))
@@ -601,7 +586,7 @@ function untilString(endstring) {
 }
 
 
-function untilRegExp(endRegExp) {
+function untilRegEx(endRegExp) {
     return (s, f) => {
         if (endRegExp.test(s)) { f() }
     }
@@ -662,11 +647,10 @@ function noResponse() {
 module.exports = {
     Engine,
     untilString,
-    untilRegExp,
+    untilRegEx,
     untilNumLines,
     untilMilli,
     untilPrompt,
     oneLine,
     noResponse,
-    untilTrue
 }
