@@ -1,6 +1,6 @@
 var te = require("telnet-engine")
-var rp = require("repeatable-promise")
-var qe = new rp.Queue()
+var opm = require("openpromise")
+var qe = new opm.Queue()
 
 
 qe.enQueue(() => {

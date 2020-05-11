@@ -157,75 +157,66 @@ function inEngine(host, port) {
     lineBreakTimer.clear = true
 
     const rawReceiver = new opm.Cycle()
+    var connectionIsOpen = false
+
+    var connectionGate = new opm.Flipflop()
+
+    connectionGate.catch(() => { })
 
     const openConnection = () => {
-        return new Promise((resolve, fail) => {
-            var flushFlag = autoFlush
-            try {
-                if (client && (!client.pending || client.connecting)) {
-                    resolve();
-                    return;
-                }
-                onConnecting.repeat()
-
-
-                var outTimer = new opm.TimeOut(timeOut)
-
-                outTimer
-                    .catch(() => {
-                        client.destroy()
-                        onConnectionTimeOut.repeat()
-                        fail();
-                    })
-
-                client = net.createConnection({ port: port, host: host },
-                    function () {
-                        outTimer.resolve()
-                        onConnectionSuccess.repeat()
-                        if (flushFlag) {
-                            var flushDelay = new opm.Delay(flushFlag)
-                            flushDelay.then(() => { resolve(); flushFlag = false })
-                        }
-                        else { resolve() }
-                    }
-
-                )
-
-                client.on('data', function (chunk) {
-                    let data = chunk.toString()
-                    rawReceiver.repeat(data)
-                    if (autoLineBreak) {
-                        if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
-                        else {
-                            lineBreakTimer.reset(autoLineBreak)
-                            lineBreakTimer = opm.Delay(autoLineBreak)
-                            lineBreakTimer
-                                .then(() => { treat(outDelimiter) })
-                                .catch(() => { })
-                                .finally(() => { lineBreakTimer.clear = true })
-                        }
-                    }
-
-                    if (!flushFlag) { treat(data) }
-                })
-
-                client.on('error', () => { onConnectionError.repeat() });
-
-                client.on('end', () => { onConnectionEnd.repeat() });
-
-            }
-
-            catch (e) {
-                onConnectionError.repeat()
-                fail()
-            }
-
+        if (connectionGate.resolved || (client && client.connecting)) { return }
+        var flushFlag = autoFlush
+        onConnecting.repeat()
+        var outTimer = new opm.TimeOut(timeOut)
+        outTimer.catch(() => {
+            client.destroy()
+            onConnectionTimeOut.repeat()
+            connectionGate.fail();
         })
+        client = net.createConnection({ port: port, host: host },
+            function () {
+                outTimer.resolve()
+                onConnectionSuccess.repeat()
+                if (flushFlag) {
+                    var flushDelay = new opm.Delay(flushFlag)
+                    flushDelay.then(() => { connectionGate.on(); flushFlag = false })
+                }
+                else { connectionGate.on() }
+            }
+
+        )
+        client.on('data', function (chunk) {
+            let data = chunk.toString()
+            rawReceiver.repeat(data)
+            if (autoLineBreak) {
+                if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
+                else {
+                    lineBreakTimer.reset(autoLineBreak)
+                    lineBreakTimer = opm.Delay(autoLineBreak)
+                    lineBreakTimer
+                        .then(() => { treat(outDelimiter) })
+                        .catch(() => { })
+                        .finally(() => { lineBreakTimer.clear = true })
+                }
+            }
+
+            if (!flushFlag) { treat(data) }
+        })
+
+        client.on('error', () => { onConnectionError.repeat() });
+
+        client.on('end', () => { onConnectionEnd.repeat() });
+
+        client.on('close', () => { connectionGate.off() })
+
+        client.on('open', () => { connectionGate.on() })
+
     }
 
+
     function reOpenConnection() {
-        if (autoOpen) { return openConnection() }
-        return Promise.resolve()
+        openConnection()
+        return connectionGate
     }
 
 
