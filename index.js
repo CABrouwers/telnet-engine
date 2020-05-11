@@ -1,5 +1,5 @@
 const net = require('net');
-const rp = require('repeatable-promise');
+const opm = require('openpromise');
 
 function makeEnding(reg) {
     return new RegExp("(" + reg.source + ")$");
@@ -28,6 +28,7 @@ function inEngine(host, port) {
     var autoLineBreak = false
     var autoFlush = false
     var autoOpen = true
+    var openRetries = false
 
 
 
@@ -134,13 +135,13 @@ function inEngine(host, port) {
     }
 
 
-    onConnecting = new rp.Cycle();
-    onConnectionSuccess = new rp.Cycle();
-    onConnectionTimeOut = new rp.Cycle();
-    onConnectionError = new rp.Cycle();
-    onConnectionEnd = new rp.Cycle();
-    onResponseTimeOut = new rp.Cycle();
-    onReceive = new rp.Cycle();
+    onConnecting = new opm.Cycle();
+    onConnectionSuccess = new opm.Cycle();
+    onConnectionTimeOut = new opm.Cycle();
+    onConnectionError = new opm.Cycle();
+    onConnectionEnd = new opm.Cycle();
+    onResponseTimeOut = new opm.Cycle();
+    onReceive = new opm.Cycle();
 
 
     this.onConnecting = (f) => { return onConnecting.thenAgain(f) }
@@ -152,10 +153,10 @@ function inEngine(host, port) {
     this.onReceive = (f) => { return onReceive.thenAgain(f) }
 
 
-    var lineBreakTimer = rp.Delay(0)
+    var lineBreakTimer = opm.Delay(0)
     lineBreakTimer.clear = true
 
-    const rawReceiver = new rp.Cycle()
+    const rawReceiver = new opm.Cycle()
 
     const openConnection = () => {
         return new Promise((resolve, fail) => {
@@ -168,7 +169,7 @@ function inEngine(host, port) {
                 onConnecting.repeat()
 
 
-                var outTimer = new rp.TimeOut(timeOut)
+                var outTimer = new opm.TimeOut(timeOut)
 
                 outTimer
                     .catch(() => {
@@ -182,7 +183,7 @@ function inEngine(host, port) {
                         outTimer.resolve()
                         onConnectionSuccess.repeat()
                         if (flushFlag) {
-                            var flushDelay = new rp.Delay(flushFlag)
+                            var flushDelay = new opm.Delay(flushFlag)
                             flushDelay.then(() => { resolve(); flushFlag = false })
                         }
                         else { resolve() }
@@ -197,7 +198,7 @@ function inEngine(host, port) {
                         if (inDelimiterChecker.exec(data)) { lineBreakTimer.fail() }
                         else {
                             lineBreakTimer.reset(autoLineBreak)
-                            lineBreakTimer = rp.Delay(autoLineBreak)
+                            lineBreakTimer = opm.Delay(autoLineBreak)
                             lineBreakTimer
                                 .then(() => { treat(outDelimiter) })
                                 .catch(() => { })
@@ -228,18 +229,18 @@ function inEngine(host, port) {
     }
 
 
-    var clearWaiter = rp.Delay(0)
+    var clearWaiter = opm.Delay(0)
     clearWaiter.clear = true
 
     function resetClearWaiter() {
         clearWaiter.reset(clearOut)
         if (clearWaiter.clear) {
-            clearWaiter = rp.Delay(clearOut)
+            clearWaiter = opm.Delay(clearOut)
             clearWaiter.then(() => { clearWaiter.clear = true })
         }
     }
 
-    const sender = new rp.Cycle()
+    const sender = new opm.Cycle()
 
     function sendLine(text, UID) {
         return clearWaiter.then(() => {
@@ -264,10 +265,10 @@ function inEngine(host, port) {
 
 
 
-    var sendQueue = new rp.Queue()
+    var sendQueue = new opm.Queue()
 
     const send_receive = (text, foo, test, UID, prompt) => {
-        responseRelease = new rp.Defer()
+        responseRelease = new opm.Defer()
         sendQueue.enQueue(() => {
             return reOpenConnection()
                 .then(() => {
@@ -290,7 +291,7 @@ function inEngine(host, port) {
                     responseDelayed = test ? test.delayed : false
                     responseUID = UID
                     responsePrompt = prompt
-                    responseTimeout = new rp.Delay(timeOut)
+                    responseTimeout = new opm.Delay(timeOut)
                     if (!responseDelayed) {
                         responseTimeout.then(() => {
                             responseRelease.fail(responseArray);
@@ -398,7 +399,7 @@ function inEngine(host, port) {
         inTreatment = false
     }
 
-    const broadcaster = new rp.Cycle()
+    const broadcaster = new opm.Cycle()
 
     function broadcast(line) {
         broadcastQueue = broadcaster.repeat(line)
@@ -497,11 +498,11 @@ function Engine(host, port, predecessor) {
 
 
     var myEngine
-    var commandQueue = new rp.Queue()
+    var commandQueue = new opm.Queue()
     var reverser
 
     this.wait = (t) => {
-        commandQueue.enQueue(new rp.Delay(t))
+        commandQueue.enQueue(new opm.Delay(t))
     }
 
 
@@ -556,8 +557,8 @@ function Engine(host, port, predecessor) {
     }
 
     this.proxy = (timeOut) => {
-        var lock = new rp.Delay(timeOut)
-        var sema = new rp.Defer()
+        var lock = new opm.Delay(timeOut)
+        var sema = new opm.Defer()
         commandQueue.enQueue(() => {
             sema.resolve()
             return lock
