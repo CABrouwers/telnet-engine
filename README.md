@@ -626,7 +626,7 @@ The following engine properties are modifiable.
 |```en.autoLineBreak ```|false/Integer|  false| If an integer, the Engine will add a terminator to any unterminated line of text after waiting for that amount of ms. 
 |```en.autoOpen ```|Boolean|  true| If true, the Engine opens/reopens the channel if needed when sending text. 
 |```en.autoFlush ```|false/Integer|  false| If an integer, the Engine discards the first lines of text received just after opening or reopening the communication. The value is the wait time after the last text flushed and before terminating the flushing, 
-
+|```en.openTries ```|Integer|  1| Number of times the Engine attempts to open the communication before it times out (the max elapsed time will be the number of attempts times the timeout value)
 
 
 ## ```Engine events ```

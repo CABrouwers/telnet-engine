@@ -28,7 +28,7 @@ function inEngine(host, port) {
     var autoLineBreak = false
     var autoFlush = false
     var autoOpen = true
-    var openRetries = false
+    var openTries = 1
 
 
 
@@ -107,6 +107,13 @@ function inEngine(host, port) {
         get: function () { return autoOpen; }
     });
 
+    Object.defineProperty(this, 'openTries', {
+        set: function (x) {
+            openTries = x ? math.max(10, math.min(1, Number(x))) : 1
+        },
+        get: function () { return openTries; }
+    });
+
 
     this.makeReverser = () => {
         var xinDelimiter = inDelimiter
@@ -119,6 +126,7 @@ function inEngine(host, port) {
         var xautoLineBreak = autoLineBreak
         var xautoFlush = autoFlush
         var xautoOpen = autoOpen
+        var xopenTries = openTries
 
         return () => {
             inDelimiter = xinDelimiter
@@ -131,6 +139,7 @@ function inEngine(host, port) {
             autoLineBreak = xautoLineBreak
             autoFlush = xautoFlush
             autoOpen = xautoOpen
+            openTries = xopenTries
         }
     }
 
@@ -157,22 +166,30 @@ function inEngine(host, port) {
     lineBreakTimer.clear = true
 
     const rawReceiver = new opm.Cycle()
-    var connectionIsOpen = false
 
     var connectionGate = new opm.Flipflop()
 
     connectionGate.catch(() => { })
 
-    const openConnection = () => {
+    const openConnection = (tries) => {
+        if (!tries) { tries = openTries }
         if (connectionGate.resolved || (client && client.connecting)) { return }
         var flushFlag = autoFlush
         onConnecting.repeat()
         var outTimer = new opm.TimeOut(timeOut)
-        outTimer.catch(() => {
-            client.destroy()
-            onConnectionTimeOut.repeat()
-            connectionGate.fail();
-        })
+        if (tries == 1) {
+            outTimer.catch(() => {
+                client.destroy()
+                onConnectionTimeOut.repeat()
+                connectionGate.fail();
+            })
+        }
+        else {
+            outTimer.catch(() => {
+                client.destroy()
+                openConnection(tries - 1)
+            })
+        }
         client = net.createConnection({ port: port, host: host },
             function () {
                 outTimer.resolve()
@@ -663,3 +680,4 @@ module.exports = {
     noResponse,
     untilTrue
 }
+
