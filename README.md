@@ -619,7 +619,8 @@ The following engine properties are modifiable.
 | ------------- |--------------|----|----
 |```en.inDelimiter ```|RegEx|  **/\r\n\|\r\|\n/**| Terminator for incoming text
 |```en.outDelimiter```|String|  **'\n'** | Terminator for outgoing text
-|```en.timeOut ```|Integer|  1500| Time in milliseconds that the Engine will wait before raising a timeout error
+|```en.openTimeout ```|Integer|  1500| Time in milliseconds that the Engine  waits before raising a timeout error when opening the communication
+|```en.requestTimeout ```|Integer|  1500| Time in milliseconds that the Engine  waits before raising a timeout error after sending a request
 |```en.clearOut ```|Integer|  0| Number of ms the Engine will wait to send a request after the last line of text received before 
 |```en.defaultPrompt ```|String/RexExp|  /^$/| Default value for ```untilPrompt()```
 |```en.modeStrict ```|Boolean|  true| In strict mode, received text is kept in the buffer and matched to the next request. If false, text received not in response to a request is not kept. 
@@ -628,6 +629,8 @@ The following engine properties are modifiable.
 |```en.autoFlush ```|false/Integer|  false| If an integer, the Engine discards the first lines of text received just after opening or reopening the communication. The value is the wait time after the last text flushed and before terminating the flushing, 
 |```en.openTries ```|Integer|  1| Number of times the Engine attempts to open the communication before it times out (the max elapsed time will be the number of attempts times the timeout value)
 
+
+To maintain compatibility with previous versions, ```en.timeOut ```is also available, it changes both  ```en.requestTimeout ``` and ```en.openTimeout ``
 
 ## ```Engine events ```
 
@@ -860,6 +863,10 @@ The start, freezing or restart of the queue of the parent or of the child is alw
 A **Proxy** exposes all the same methods as an **Engine** except ```terminate()``` and  ```destroy()```, which are not available on the **Proxie**s. 
 
 Changes to the **Engine** properties through the **Proxy** properties are possible, and these changes are reverted when the **Proxy** is released. 
+
+## ```en.open()```
+
+Opens the communication. It is usually unnecessary as the communication is automatically opened/reopened when sending text, flushing etc ...
 
 ## ```en.wait(t)```
 

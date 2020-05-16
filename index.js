@@ -21,7 +21,8 @@ function inEngine(host, port) {
     var inDelimiter = /\r\n|\n\r|\r|\n/
     var inDelimiterChecker = makeEnding(inDelimiter)
     var outDelimiter = '\n'
-    var timeOut = 1500
+    var openTimeout = 1500
+    var requestTimeout = 1500
     var clearOut = 0
     var defaultPrompt = /^$/
     var modeStrict = true
@@ -49,9 +50,24 @@ function inEngine(host, port) {
 
     Object.defineProperty(this, 'timeOut', {
         set: function (x) {
-            timeOut = isNaN(x) ? defaultTimeout : Math.abs(parseInt(x))
+            openTimeout = isNaN(x) ? defaultTimeout : Math.abs(parseInt(x))
+            requestTimeout = openTimeout
         },
-        get: function () { return timeOut; }
+        get: function () { return openTimeout; }
+    });
+
+    Object.defineProperty(this, 'requestTimeout', {
+        set: function (x) {
+            requestTimeout = isNaN(x) ? defaultTimeout : Math.abs(parseInt(x))
+        },
+        get: function () { return requestTimeout; }
+    });
+
+    Object.defineProperty(this, 'openTimeout', {
+        set: function (x) {
+            openTimeout = isNaN(x) ? defaultTimeout : Math.abs(parseInt(x))
+        },
+        get: function () { return openTimeout; }
     });
 
 
@@ -119,7 +135,8 @@ function inEngine(host, port) {
         var xinDelimiter = inDelimiter
         var xinDelimiterChecker = inDelimiterChecker
         var xoutDelimiter = outDelimiter
-        var xtimeOut = timeOut
+        var xopenTimeout = openTimeout
+        var xrequestTimeout = requestTimeout
         var xclearOut = clearOut
         var xdefaultPrompt = defaultPrompt
         var xmodeStrict = modeStrict
@@ -132,7 +149,8 @@ function inEngine(host, port) {
             inDelimiter = xinDelimiter
             inDelimiterChecker = xinDelimiterChecker
             outDelimiter = xoutDelimiter
-            timeOut = xtimeOut
+            openTimeout = xopenTimeout
+            requestTimeout = xrequestTimeout
             clearOut = xclearOut
             defaultPrompt = xdefaultPrompt
             modeStrict = xmodeStrict
@@ -176,7 +194,7 @@ function inEngine(host, port) {
         if (connectionGate.resolved || (client && client.connecting)) { return }
         var flushFlag = autoFlush
         onConnecting.repeat()
-        var outTimer = new opm.TimeOut(timeOut)
+        var outTimer = new opm.TimeOut(openTimeout)
         if (tries == 1) {
             outTimer.catch(() => {
                 client.destroy()
@@ -299,7 +317,7 @@ function inEngine(host, port) {
                     responseDelayed = test ? test.delayed : false
                     responseUID = UID
                     responsePrompt = prompt
-                    responseTimeout = new opm.Delay(timeOut)
+                    responseTimeout = new opm.Delay(requestTimeout)
                     if (!responseDelayed) {
                         responseTimeout.then(() => {
                             responseRelease.fail(responseArray);
@@ -513,6 +531,10 @@ function Engine(host, port, predecessor) {
         commandQueue.enQueue(new opm.Delay(t))
     }
 
+
+    this.open = () => {
+        myEngine.open()
+    }
 
     this.request = (req) => {
         return commandQueue.enQueue(
