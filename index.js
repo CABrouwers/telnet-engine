@@ -373,7 +373,7 @@ function inEngine(host, port) {
         var requestWIP = true
         onReceive.repeat()
         do {
-            if (responseTimeout) { responseTimeout.reset(timeOut) }
+            if (responseTimeout) { responseTimeout.reset(requestTimeout) }
             var pe = inDelimiter.exec(buffer)
             var pr = pe || !responsePrompt ? null : responsePrompt.exec(buffer)
             if (pe || pr) {
