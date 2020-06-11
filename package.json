@@ -23,6 +23,6 @@
   "homepage": "https://github.com/CABrouwers/telnet-engine#readme",
   "dependencies": {
     "net": "^1.0.2",
-    "repeatable-promise": "^1.8.5"
+    "openpromise": "^2.2.1"
   }
 }
